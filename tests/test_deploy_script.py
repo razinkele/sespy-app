@@ -356,6 +356,7 @@ def _rescued(fake: Fake) -> list[Path]:
 
 SWAP_APP = "mv -T sespy_app.incoming sespy_app"
 SWAP_LIB = "mv -T sespy.incoming sespy"
+SWAP_APP_PY = "mv -f app.py.incoming app.py"
 
 
 def _swap_cmd(fake: Fake) -> str:
@@ -381,7 +382,8 @@ def test_first_deploy_without_existing_sespy(fake):
         assert not (fake.app / leftover).exists(), leftover
     assert not (fake.app / "sespy" / "logs").exists(), "the library's local logs must never ship"
     assert not (fake.app / "sespy_app" / "logs").exists(), "the app's local logs must never ship"
-    assert (fake.app / "app.py").is_file()
+    assert (fake.app / "app.py").read_text() == "print('app')\n"
+    assert not (fake.app / "app.py.incoming").exists()
     assert (fake.app / "docs" / "MANUAL.md").is_file()
     assert (fake.app / "restart.txt").is_file()
 
@@ -392,7 +394,8 @@ def test_uses_incoming_swap(fake):
     fake.put("sespy_app/old_view.py", "old")
     _ok(fake.run(), fake)
     targets = sorted(c.split()[-1] for c in fake.incoming_scps())
-    assert targets == [f"{SERVER}:{fake.app_posix}/sespy.incoming",
+    assert targets == [f"{SERVER}:{fake.app_posix}/app.py.incoming",
+                       f"{SERVER}:{fake.app_posix}/sespy.incoming",
                        f"{SERVER}:{fake.app_posix}/sespy_app.incoming"]
     swap = _swap_cmd(fake)
     assert SWAP_APP in swap and SWAP_LIB in swap
@@ -401,18 +404,26 @@ def test_uses_incoming_swap(fake):
 
 
 def test_app_py_uploaded_after_swap(fake):
+    """app.py goes up as app.py.incoming before any rename and is renamed
+    inside the swap chain, after both package pairs; the later glob scp of
+    the other runtime items never carries app.py or a package."""
+    fake.put("app.py", "print('old app')\n")
     _ok(fake.run(), fake)
     lines = fake.log_lines()
-    i_incoming = max(i for i, ln in enumerate(lines)
-                     if ln.startswith("scp ") and ln.endswith(".incoming"))
+    i_app_in = next(i for i, ln in enumerate(lines)
+                    if ln.startswith("scp ") and ln.endswith(f"{SERVER}:{fake.app_posix}/app.py.incoming"))
     i_swap = next(i for i, ln in enumerate(lines)
                   if ln.startswith("ssh ") and SWAP_LIB in ln)
-    i_app = next(i for i, ln in enumerate(lines)
-                 if ln.startswith("scp ") and "/app.py" in ln)
-    assert i_incoming < i_swap < i_app
-    app_scp = lines[i_app].split()
-    assert not any(a.endswith(("/sespy", "/sespy_app")) for a in app_scp), (
-        "sespy and sespy_app must be excluded from the glob scp")
+    assert i_app_in < i_swap
+    swap = lines[i_swap]
+    assert swap.index(SWAP_APP) < swap.index(SWAP_LIB) < swap.index(SWAP_APP_PY)
+    others = [ln for i, ln in enumerate(lines) if i > i_swap and ln.startswith("scp ")]
+    assert others, "the other runtime items are still uploaded"
+    for ln in others:
+        assert not any(a.endswith(("/app.py", "/sespy", "/sespy_app")) for a in ln.split()), (
+            "app.py, sespy and sespy_app must be excluded from the glob scp")
+    assert (fake.app / "app.py").read_text() == "print('app')\n"
+    assert not (fake.app / "app.py.incoming").exists()
 
 
 def test_logs_moved_into_incoming_before_swap(fake):
@@ -829,11 +840,14 @@ def test_old_logs_kept_when_sespy_present(make_fake):
 
 def test_failing_swap_step_aborts(fake):
     fake.new_layout(db=b"DB")
+    fake.put("app.py", "print('old app')\n")
     cp = fake.run(STUB_SSH_FAIL=SWAP_LIB, STUB_SSH_FAIL_RC="1")
     assert cp.returncode != 0
-    assert len(fake.incoming_scps()) == 2, "the run reached the swap"
+    assert len(fake.incoming_scps()) == 3, "the run reached the swap"
     assert "the swap on" in fake.out
-    assert not any("/app.py" in c for c in fake.calls("scp")), "app.py uploaded after a failed swap"
+    assert not any(c.split()[-1].endswith("/app.py") or c.split()[-1].endswith(f"{fake.app_posix}/")
+                   for c in fake.calls("scp")), "runtime items uploaded after a failed swap"
+    assert (fake.app / "app.py").read_text() == "print('old app')\n", "app.py replaced by a failed swap"
     assert not (fake.app / "restart.txt").exists()
     assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == b"DB"
 
@@ -1008,8 +1022,11 @@ def test_swap_order_uploads_then_one_rename_chain(fake):
     assert positions == sorted(positions), "sespy_app pair first, then the sespy pair"
     assert sum(any(r in ln for r in renames) for ln in lines if ln.startswith("ssh ")) == 1, (
         "both rename pairs sit in one ssh command")
-    i_app_py = next(i for i, ln in enumerate(lines) if ln.startswith("scp ") and "/app.py" in ln)
-    assert i_app_py > i_first_rename
+    i_app_py_in = next(i for i, ln in enumerate(lines)
+                       if ln.startswith("scp ") and ln.endswith(f"{SERVER}:{fake.app_posix}/app.py.incoming"))
+    assert i_app_py_in < i_first_rename, "app.py.incoming is uploaded before the first rename"
+    assert chain.index(SWAP_LIB) < chain.index(SWAP_APP_PY), "app.py is renamed after both pairs"
+    assert sum(SWAP_APP_PY in ln for ln in lines if ln.startswith("ssh ")) == 1
 
 
 def test_old_worker_db_after_swap_is_rescued(fake):
@@ -1196,3 +1213,28 @@ def test_deploy_default_matches_app_constant():
     m = re.search(r'^DEFAULT_R_DATA_DIR="([^"]*)"', text, re.M)
     assert m, "DEFAULT_R_DATA_DIR not found in deploy.sh"
     assert m.group(1) == LAGUNA_R_DATA_DIR
+
+
+@pytest.mark.parametrize("content", [b"STRAY-OLD-WORKER-ROW" * 20, None], ids=["db", "empty_dir"])
+def test_stray_sespy_logs_in_new_layout_is_rescued(fake, content):
+    """After the cutover an old-code worker that outlived it recreates
+    sespy/logs inside the library (even just by opening the Feedback modal):
+    in the new layout that is moved aside, never a two-stores abort."""
+    db = b"SQLite format 3\x00" + b"APP-ROWS" * 100
+    fake.new_layout(db=db)
+    if content is None:
+        (fake.app / "sespy" / "logs").mkdir(parents=True)
+    else:
+        fake.put("sespy/logs/feedback.db", content)
+    _ok(fake.run(), fake)
+    assert "two feedback stores" not in fake.out
+    assert "was recreated by a pre-cutover worker" in fake.out
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == db
+    assert not (fake.app / "sespy" / "logs").exists()
+    rescued = _rescued(fake)
+    assert len(rescued) == 1
+    if content is None:
+        assert list(rescued[0].iterdir()) == []
+    else:
+        assert (rescued[0] / "feedback.db").read_bytes() == content
+    assert (fake.app / "restart.txt").is_file(), "the deploy continued"

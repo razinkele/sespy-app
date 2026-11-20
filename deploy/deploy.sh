@@ -194,8 +194,8 @@ if [ -z "$PIN" ]; then
   echo "!! $REPO_ROOT/pyproject.toml pins no sespy library tag (a direct reference ending @vX.Y.Z); is this a sespy-app checkout? Aborting before upload." >&2
   exit 2
 fi
-if [ ! -d sespy_app ]; then
-  echo "!! $REPO_ROOT has no sespy_app/ package, so it is not a sespy-app checkout (a pre-split monolith tag cannot be deployed with this script). Aborting before upload." >&2
+if [ ! -d sespy_app ] || [ ! -f app.py ]; then
+  echo "!! $REPO_ROOT has no sespy_app/ package or app.py, so it is not a sespy-app checkout (a pre-split monolith tag cannot be deployed with this script). Aborting before upload." >&2
   exit 2
 fi
 LIB="${ENV_LIBRARY_ROOT:-${DEPLOY_LIBRARY_ROOT:-}}"
@@ -423,8 +423,15 @@ rm -rf "$STAGE/.live"
 #      symlinks sespy_app and would import it as an empty package.
 #    - .deploy-keep/logs: the pre-K1 script died between stash and restore
 #      (left in place if <home>/logs already exists).
-#    - sespy/logs AND sespy_app/logs both present: two feedback stores, which
+#    - a stray sespy/logs in the NEW layout (sespy_app/__init__.py exists and
+#      sespy/ has no modules/): an old-code worker that outlived the cutover
+#      (Shiny Server keeps existing sessions on the old process) recreated
+#      it inside the library; it is moved aside, never deleted, and the
+#      deploy continues.
+#    - sespy/logs AND sespy_app/logs both present in the OLD layout (sespy/
+#      is still the monolith, with modules/): two feedback stores, which
 #      only a human can merge; abort before any upload or swap.
+#    - a half-uploaded app.py.incoming is removed.
 # Remote helpers, defined in every ssh that may delete a .old/.incoming dir.
 # aside_logs DIR WHY: move DIR/logs to a fresh logs.rescued-<ts>[-DIR-n].
 # rescue_logs DIR HOME: move DIR/logs to HOME/logs, or aside if that exists.
@@ -444,6 +451,10 @@ rescue_logs() {
     aside_logs "$1" "was stranded and $2/logs already exists"
   fi
 }'
+# NEW_LAYOUT: remote test, true once sespy_app/ is installed and sespy/ is
+# the library (no monolith modules/).
+NEW_LAYOUT='[ -e sespy_app/__init__.py ] && [ ! -e sespy/modules ]'
+STRAY_WHY='was recreated by a pre-cutover worker'
 TWO_STORES="two feedback stores: merge $APP_DIR/sespy/logs and $APP_DIR/sespy_app/logs by hand"
 prologue_rc=0
 ssh "$SERVER" "$REMOTE_RESCUE
@@ -461,7 +472,10 @@ ssh "$SERVER" "$REMOTE_RESCUE
   fi &&
   if [ -d .deploy-keep ] && [ ! -e .deploy-keep/logs ]; then rm -rf .deploy-keep; fi &&
   rm -rf sespy_app.old sespy_app.incoming sespy.old sespy.incoming &&
-  if [ -e sespy/logs ] && [ -e sespy_app/logs ]; then exit 3; fi
+  rm -f app.py.incoming &&
+  if $NEW_LAYOUT; then
+    if [ -e sespy/logs ]; then aside_logs sespy '$STRAY_WHY'; fi;
+  elif [ -e sespy/logs ] && [ -e sespy_app/logs ]; then exit 3; fi
 " || prologue_rc=$?
 if [ "$prologue_rc" -eq 3 ]; then
   echo "!! ${TWO_STORES}. Aborting before upload; nothing was swapped." >&2
@@ -471,8 +485,11 @@ elif [ "$prologue_rc" -ne 0 ]; then
   exit "$prologue_rc"
 fi
 
-# 4. Upload both packages beside the live ones, BOTH before any rename, then
-#    swap in ONE remote && chain:
+# 4. Upload both packages and app.py beside the live ones, ALL before any
+#    rename, then swap in ONE remote && chain:
+#    - a stray sespy/logs in the new layout goes aside (as in step 3; a
+#      worker may have recreated it since), while two stores in the old
+#      layout abort before any rename;
 #    - the feedback store moves into sespy_app.incoming as a whole logs/ dir:
 #      sespy_app/logs on repeat deploys, or, once, the pre-split sespy/logs;
 #    - the sespy_app rename pair, then the sespy rename pair. sespy_app goes
@@ -480,6 +497,10 @@ fi
 #      still-old sespy/ (compatible: 1.17.1 is a superset of the 1.18.0
 #      library API); on later releases the two packages differ for at most
 #      the length of this one command;
+#    - app.py.incoming renamed over app.py right after both pairs, so a
+#      process spawned after the chain never pairs the old app.py with the
+#      new packages (at the cutover the old app.py imports sespy.modules,
+#      which the library does not have);
 #    - logs a worker recreated meanwhile in sespy_app.old or sespy.old are
 #      rescued before those dirs are deleted, and a sespy/logs that an
 #      old-code worker recreated inside the new library is moved aside.
@@ -488,10 +509,13 @@ fi
 #    stops the chain; the next run's step 3 repairs what it left.
 scp -rq "$STAGE/sespy_app" "$SERVER:$APP_DIR/sespy_app.incoming"
 scp -rq "$STAGE/sespy" "$SERVER:$APP_DIR/sespy.incoming"
+scp -q "$STAGE/app.py" "$SERVER:$APP_DIR/app.py.incoming"
 swap_rc=0
 ssh "$SERVER" "$REMOTE_RESCUE
   cd '$APP_DIR' &&
-  if [ -e sespy/logs ] && [ -e sespy_app/logs ]; then
+  if $NEW_LAYOUT; then
+    if [ -e sespy/logs ]; then aside_logs sespy '$STRAY_WHY'; fi;
+  elif [ -e sespy/logs ] && [ -e sespy_app/logs ]; then
     echo '!! $TWO_STORES' >&2; exit 3;
   fi &&
   if [ -d sespy_app/logs ]; then mv -T sespy_app/logs sespy_app.incoming/logs;
@@ -500,6 +524,7 @@ ssh "$SERVER" "$REMOTE_RESCUE
   mv -T sespy_app.incoming sespy_app &&
   if [ -e sespy ]; then mv -T sespy sespy.old; fi &&
   mv -T sespy.incoming sespy &&
+  mv -f app.py.incoming app.py &&
   rescue_logs sespy_app.old sespy_app &&
   rescue_logs sespy.old sespy_app &&
   if [ -e sespy/logs ]; then aside_logs sespy 'was recreated by a worker still running the old code'; fi &&
@@ -507,16 +532,17 @@ ssh "$SERVER" "$REMOTE_RESCUE
   rm -rf '$APP_DIR/__pycache__' '$APP_DIR/docs/screenshots'
 " || swap_rc=$?
 if [ "$swap_rc" -ne 0 ]; then
-  echo "!! the swap on ${SERVER} failed (exit $swap_rc); app.py, the settings file and restart.txt were not touched. Rerun deploy/deploy.sh: its step 3 repairs a half-done swap." >&2
+  echo "!! the swap on ${SERVER} failed (exit $swap_rc); the settings file and restart.txt were not touched (app.py is renamed only after both package pairs). Rerun deploy/deploy.sh: its step 3 repairs a half-done swap." >&2
   exit "$swap_rc"
 fi
 
 # 5. The other runtime items (stale top-level bytecode and screenshots were
-#    cleared above, since scp overwrites but never deletes).
+#    cleared above, since scp overwrites but never deletes); app.py went in
+#    with the swap.
 OTHERS=()
 for p in "$STAGE"/*; do
   case "$(basename "$p")" in
-    sespy | sespy_app) ;;
+    sespy | sespy_app | app.py) ;;
     *) OTHERS+=("$p") ;;
   esac
 done
