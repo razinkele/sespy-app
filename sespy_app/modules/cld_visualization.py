@@ -23,8 +23,6 @@ from pyvis.shiny import (
     output_pyvis_network,
     render_pyvis_network,
 )
-from shiny import Inputs, Outputs, Session, module, reactive, render, ui
-
 from sespy.constants import (
     DAPSIWRM_ELEMENTS,
     DAPSIWRM_FONT_SIZE,
@@ -38,10 +36,12 @@ from sespy.constants import (
     ELEMENT_SHAPES,
 )
 from sespy.data_structure import IsaData, Project, filter_elements
-from sespy_app.event_bus import EventBus
 from sespy.input_utils import safe_float, safe_int
-from sespy_app.i18n import t
 from sespy.network import connection_disagreement, delay_edge_kwargs
+from shiny import Inputs, Outputs, Session, module, reactive, render, ui
+
+from sespy_app.event_bus import EventBus
+from sespy_app.i18n import t
 
 
 @module.ui

@@ -11,10 +11,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 import pandas as pd
-from shiny import Inputs, Outputs, Session, module, reactive, render, ui
-
 from sespy.data_structure import Project, Stakeholder
-from sespy_app.event_bus import EventBus
 from sespy.stakeholder_reports import (
     build_power_interest_png,
     build_stakeholder_workbook,
@@ -45,9 +42,12 @@ from sespy.stakeholders import (
 from sespy.stakeholders import (
     stakeholder_stats as compute_stakeholder_stats,
 )
+from sespy.utils import safe_counter
+from shiny import Inputs, Outputs, Session, module, reactive, render, ui
+
+from sespy_app.event_bus import EventBus
 from sespy_app.i18n import Translator
 from sespy_app.i18n import t as _t
-from sespy.utils import safe_counter
 
 # code -> i18n label-key suffix maps (codes are stored; labels are rendered)
 _TYPE_CODES = ["resource_users", "industry", "government", "ngo", "academic",

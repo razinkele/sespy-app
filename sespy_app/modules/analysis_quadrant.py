@@ -10,11 +10,11 @@ presenter mirroring `analysis_leverage.py`.
 
 from __future__ import annotations
 
-from shiny import Inputs, Outputs, Session, module, reactive, render, ui
-
 from sespy import network as net_analysis
 from sespy.constants import DEFAULT_GROUP_COLOR, ELEMENT_COLORS
 from sespy.data_structure import Project
+from shiny import Inputs, Outputs, Session, module, reactive, render, ui
+
 from sespy_app.event_bus import EventBus
 from sespy_app.i18n import Translator, t
 

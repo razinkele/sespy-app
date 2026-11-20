@@ -12,11 +12,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sespy.r_kb import Snapshot
 
+from sespy.data_structure import Project
+from sespy.report import regional_context_for, render_docx, render_html, render_pdf
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from sespy.data_structure import Project
 from sespy_app.event_bus import EventBus
-from sespy.report import regional_context_for, render_docx, render_html, render_pdf
 from sespy_app.i18n import Translator
 from sespy_app.kb_reads import add_reads
 

@@ -16,11 +16,9 @@ crashing the app.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
-import logging
-
-from shiny import Inputs, Outputs, Session, reactive, render, ui
 
 from sespy import data_structure as ds
 from sespy import r_kb
@@ -31,14 +29,16 @@ from sespy.autosave import (
     read_autosave,
     write_autosave,
 )
-from sespy_app.browser_token import browser_token_script, read_browser_token
-from sespy_app.event_bus import EventBus
-from sespy_app.i18n import Translator
 from sespy.persistent_storage import (
     load_project,
     project_to_bytes,
 )
 from sespy.recent_projects import add_recent
+from shiny import Inputs, Outputs, Session, reactive, render, ui
+
+from sespy_app.browser_token import browser_token_script, read_browser_token
+from sespy_app.event_bus import EventBus
+from sespy_app.i18n import Translator
 
 logger = logging.getLogger(__name__)
 

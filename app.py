@@ -14,12 +14,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import sespy
+from sespy import data_structure, r_kb
 from shiny import App, Inputs, Outputs, Session, reactive, ui
 
-from sespy import data_structure
-import sespy
 from sespy_app import i18n as _i18n
-from sespy import r_kb
+from sespy_app.browser_token import read_browser_token
 from sespy_app.dashboard import (
     NavItem,
     StepperItem,
@@ -60,7 +60,6 @@ from sespy_app.modules.pims_stakeholders import (
     pims_stakeholders_server,
     pims_stakeholders_ui,
 )
-from sespy_app.browser_token import read_browser_token
 from sespy_app.modules.project_io import quick_actions_server, quick_actions_ui
 from sespy_app.modules.rate_connections import rate_connections_server, rate_connections_ui
 from sespy_app.modules.recent_projects import recent_projects_server, recent_projects_ui

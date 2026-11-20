@@ -18,11 +18,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from sespy.data_structure import Project
+from sespy.templates import TemplateInfo, list_catalogue, list_templates, load_template
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from sespy.data_structure import Project
 from sespy_app.event_bus import EventBus
-from sespy.templates import TemplateInfo, list_catalogue, list_templates, load_template
 from sespy_app.i18n import Translator, t
 
 GROUPS = ("marinesabres", "sespy")      # display order of the two groups

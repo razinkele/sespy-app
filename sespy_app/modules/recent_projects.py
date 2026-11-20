@@ -11,12 +11,12 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-from shiny import Inputs, Outputs, Session, module, reactive, render, ui
-
 from sespy.data_structure import Project
-from sespy_app.event_bus import EventBus
 from sespy.persistent_storage import load_project
 from sespy.recent_projects import RecentEntry, list_recent, remove_recent
+from shiny import Inputs, Outputs, Session, module, reactive, render, ui
+
+from sespy_app.event_bus import EventBus
 from sespy_app.i18n import Translator
 
 

@@ -30,9 +30,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from shiny import reactive
-from shiny.session import get_current_session
-
 from sespy import i18n as _lib
 from sespy.i18n import (
     DEFAULT_FALLBACK,
@@ -43,6 +40,8 @@ from sespy.i18n import (
     set_default,
     t,
 )
+from shiny import reactive
+from shiny.session import get_current_session
 
 __all__ = [
     "DEFAULT_FALLBACK",

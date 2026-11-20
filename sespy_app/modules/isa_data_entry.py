@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import dataclasses
 
-from shiny import Inputs, Outputs, Session, module, reactive, render, ui
-
 from sespy.constants import (
     CONNECTION_POLARITY_LABELS,
     DAPSIWRM_ELEMENTS,
@@ -28,11 +26,13 @@ from sespy.constants import (
     POLICY_TARGET_CODES,
 )
 from sespy.data_structure import Connection, Element, IsaData, Project
-from sespy_app.event_bus import EventBus
 from sespy.link_rules import note_for, seed_polarity
 from sespy.response_register import references_to
-from sespy_app.i18n import Translator, t
 from sespy.utils import next_id
+from shiny import Inputs, Outputs, Session, module, reactive, render, ui
+
+from sespy_app.event_bus import EventBus
+from sespy_app.i18n import Translator, t
 
 
 def _prefix_for(element_type: str) -> str:

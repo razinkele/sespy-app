@@ -10,9 +10,8 @@ authentication mechanism.
 
 from __future__ import annotations
 
-from shiny import ui
-
 from sespy.autosave import valid_token
+from shiny import ui
 
 BROWSER_TOKEN_INPUT = "sespy_browser_token"
 

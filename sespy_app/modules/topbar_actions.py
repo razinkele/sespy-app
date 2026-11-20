@@ -12,13 +12,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sespy.r_kb import Snapshot
 
-from shiny import reactive, render, ui
-
 import sespy
-import sespy_app
 from sespy import r_kb
 from sespy.autosave import autosave_age_seconds, clear_autosave
 from sespy.input_utils import safe_int
+from shiny import reactive, render, ui
+
+import sespy_app
 from sespy_app import feedback_store
 from sespy_app.browser_token import read_browser_token
 from sespy_app.dashboard import language_switcher

@@ -12,10 +12,10 @@ from __future__ import annotations
 import dataclasses
 from datetime import datetime, timezone
 
-from shiny import Inputs, Outputs, Session, module, reactive, render, ui
-
 from sespy.constants import DA_SITES, SPATIAL_SCALES, TEMPORAL_SCALES
 from sespy.data_structure import Project
+from shiny import Inputs, Outputs, Session, module, reactive, render, ui
+
 from sespy_app.event_bus import EventBus
 from sespy_app.i18n import Translator, t
 

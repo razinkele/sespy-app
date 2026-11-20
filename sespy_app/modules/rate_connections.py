@@ -9,11 +9,11 @@ editing here (that lives in Edit Data).
 """
 from __future__ import annotations
 
-from shiny import Inputs, Outputs, Session, module, reactive, render, ui
-
 from sespy import network
 from sespy.constants import CONNECTION_POLARITY_LABELS, DELAY_LEVELS
 from sespy.data_structure import IsaData, Rating
+from shiny import Inputs, Outputs, Session, module, reactive, render, ui
+
 from sespy_app.event_bus import EventBus
 from sespy_app.i18n import Translator, t
 

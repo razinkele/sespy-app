@@ -15,8 +15,6 @@ from __future__ import annotations
 
 from pyvis.network import Network
 from pyvis.shiny import output_pyvis_network, render_pyvis_network
-from shiny import Inputs, Outputs, Session, module, reactive, render, ui
-
 from sespy import network as net_analysis
 from sespy.constants import (
     DEFAULT_GROUP_COLOR,
@@ -26,8 +24,10 @@ from sespy.constants import (
     ELEMENT_SHAPES,
 )
 from sespy.data_structure import IsaData, Project
-from sespy_app.event_bus import EventBus
 from sespy.input_utils import safe_int
+from shiny import Inputs, Outputs, Session, module, reactive, render, ui
+
+from sespy_app.event_bus import EventBus
 from sespy_app.i18n import Translator, t
 
 

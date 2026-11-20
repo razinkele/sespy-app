@@ -19,11 +19,6 @@ import os
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, assert_never
 
-from shiny import Inputs, Outputs, Session, module, reactive, render, ui
-from shiny.module import resolve_id
-from shiny.testmode import export_test_values
-from shiny.types import SilentException
-
 from sespy import r_kb
 from sespy.claude_backend import (  # NOTE: lazy import for runtime use lives in
     _REASON_TO_I18N,  #       claude_backend imports nothing from Shiny,
@@ -39,14 +34,11 @@ from sespy.data_structure import (
     Project,
     WizardState,
 )
-from sespy_app.event_bus import EventBus
 from sespy.kb_suggestions import (
     countries_for_sea,
     country_names_for,
     get_context_suggestions,
 )
-from sespy_app.i18n import Translator, t
-from sespy_app.kb_reads import add_reads
 from sespy.utils import next_id
 from sespy.wizard import (
     ELEMENT_TYPE_MAP,
@@ -54,6 +46,14 @@ from sespy.wizard import (
     WIZARD_STEPS,
     suggest_connections,
 )
+from shiny import Inputs, Outputs, Session, module, reactive, render, ui
+from shiny.module import resolve_id
+from shiny.testmode import export_test_values
+from shiny.types import SilentException
+
+from sespy_app.event_bus import EventBus
+from sespy_app.i18n import Translator, t
+from sespy_app.kb_reads import add_reads
 
 if TYPE_CHECKING:
     from sespy.r_kb import Snapshot
