@@ -25,7 +25,7 @@ from pyvis.shiny import (
 )
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from ..constants import (
+from sespy.constants import (
     DAPSIWRM_ELEMENTS,
     DAPSIWRM_FONT_SIZE,
     DAPSIWRM_LABEL_WIDTH,
@@ -37,11 +37,11 @@ from ..constants import (
     ELEMENT_COLORS,
     ELEMENT_SHAPES,
 )
-from ..data_structure import IsaData, Project, filter_elements
-from ..event_bus import EventBus
-from ..input_utils import safe_float, safe_int
-from ..ui_i18n import t
-from ..network import connection_disagreement, delay_edge_kwargs
+from sespy.data_structure import IsaData, Project, filter_elements
+from sespy_app.event_bus import EventBus
+from sespy.input_utils import safe_float, safe_int
+from sespy_app.i18n import t
+from sespy.network import connection_disagreement, delay_edge_kwargs
 
 
 @module.ui

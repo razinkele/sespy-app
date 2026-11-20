@@ -20,7 +20,7 @@ import pandas as pd
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
 from sespy.data_structure import Project, ResponseRegister
-from sespy.event_bus import EventBus
+from sespy_app.event_bus import EventBus
 from sespy.response_register import (
     EFFECTIVENESS_LEVELS,
     FEASIBILITY_LEVELS,
@@ -55,8 +55,8 @@ from sespy.response_register import (
     update_measure,
 )
 from sespy.response_reports import build_ef_figure, build_response_workbook
-from sespy.ui_i18n import Translator
-from sespy.ui_i18n import t as _t
+from sespy_app.i18n import Translator
+from sespy_app.i18n import t as _t
 
 _RM = "modules.response.measures."
 _GOV = "modules.response.governance."

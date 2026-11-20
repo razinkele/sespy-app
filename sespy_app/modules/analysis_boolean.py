@@ -11,11 +11,11 @@ from __future__ import annotations
 import numpy as np
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from .. import dynamics
-from ..data_structure import Project
-from ..event_bus import EventBus
-from ..input_utils import safe_int
-from ..ui_i18n import Translator, t
+from sespy import dynamics
+from sespy.data_structure import Project
+from sespy_app.event_bus import EventBus
+from sespy.input_utils import safe_int
+from sespy_app.i18n import Translator, t
 from ._notify import notify_data_changed
 
 

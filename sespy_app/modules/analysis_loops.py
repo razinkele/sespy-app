@@ -17,18 +17,18 @@ from pyvis.shiny import output_pyvis_network, render_pyvis_network
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 from shiny.types import SilentException
 
-from .. import network as net_analysis
-from ..constants import (
+from sespy import network as net_analysis
+from sespy.constants import (
     DEFAULT_GROUP_COLOR,
     DEFAULT_GROUP_SHAPE,
     EDGE_COLORS,
     ELEMENT_COLORS,
     ELEMENT_SHAPES,
 )
-from ..data_structure import IsaData, Project
-from ..event_bus import EventBus
-from ..input_utils import safe_int
-from ..ui_i18n import t
+from sespy.data_structure import IsaData, Project
+from sespy_app.event_bus import EventBus
+from sespy.input_utils import safe_int
+from sespy_app.i18n import t
 
 _COMPUTING = object()
 
@@ -46,7 +46,7 @@ _BEHAVIOR_COLOR = {
 
 def _build_loop_network(loop_nodes: list[str], isa: IsaData) -> Network:
     """Build a pyvis.Network showing one feedback loop."""
-    from ..constants import normalize_delay
+    from sespy.constants import normalize_delay
     label_by_id = {el.id: el.label for el in isa.elements}
     type_by_id = {el.id: el.type for el in isa.elements}
     polarity_by_edge = {(c.source, c.target): c.polarity for c in isa.connections}

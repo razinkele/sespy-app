@@ -10,15 +10,15 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..r_kb import Snapshot
+    from sespy.r_kb import Snapshot
 
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from ..data_structure import Project
-from ..event_bus import EventBus
-from ..report import regional_context_for, render_docx, render_html, render_pdf
-from ..ui_i18n import Translator
-from ..ui_r_kb import add_reads
+from sespy.data_structure import Project
+from sespy_app.event_bus import EventBus
+from sespy.report import regional_context_for, render_docx, render_html, render_pdf
+from sespy_app.i18n import Translator
+from sespy_app.kb_reads import add_reads
 
 #: The reference files the Regional Context section is built from.
 _REGIONAL_READS = frozenset({"ses_knowledge_db.json", "country_governance_db.json"})

@@ -11,11 +11,11 @@ from __future__ import annotations
 
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from .. import network
-from ..constants import CONNECTION_POLARITY_LABELS, DELAY_LEVELS
-from ..data_structure import IsaData, Rating
-from ..event_bus import EventBus
-from ..ui_i18n import Translator, t
+from sespy import network
+from sespy.constants import CONNECTION_POLARITY_LABELS, DELAY_LEVELS
+from sespy.data_structure import IsaData, Rating
+from sespy_app.event_bus import EventBus
+from sespy_app.i18n import Translator, t
 
 _STRENGTHS = ("weak", "medium", "strong")
 

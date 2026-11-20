@@ -16,10 +16,10 @@ import numpy as np
 import pandas as pd
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from ..data_structure import Project
-from ..event_bus import EventBus
-from ..input_utils import safe_float, safe_int
-from ..ui_i18n import Translator, t
+from sespy.data_structure import Project
+from sespy_app.event_bus import EventBus
+from sespy.input_utils import safe_float, safe_int
+from sespy_app.i18n import Translator, t
 
 _YEAR_COL_CANDIDATES = ("year",)
 _VALUE_COL_CANDIDATES = ("value", "measurement")

@@ -37,6 +37,7 @@ tests/screenshots/
 
 # Feedback SQLite store (runtime state)
 sespy/logs/
+sespy_app/logs/
 
 # Stray artifacts from shell mishaps (review and delete manually if you don't need them)
 0]

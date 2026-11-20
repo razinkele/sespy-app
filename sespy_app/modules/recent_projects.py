@@ -13,11 +13,11 @@ from pathlib import Path
 
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from ..data_structure import Project
-from ..event_bus import EventBus
-from ..persistent_storage import load_project
-from ..recent_projects import RecentEntry, list_recent, remove_recent
-from ..ui_i18n import Translator
+from sespy.data_structure import Project
+from sespy_app.event_bus import EventBus
+from sespy.persistent_storage import load_project
+from sespy.recent_projects import RecentEntry, list_recent, remove_recent
+from sespy_app.i18n import Translator
 
 
 @module.ui
@@ -147,7 +147,7 @@ def recent_projects_server(
     # Wire one observer pair per visible row. Since rows change as the
     # registry grows/shrinks, we register up to MAX_RECENT pairs at module
     # init — clicks on later rows are no-ops if there aren't enough rows.
-    from ..recent_projects import MAX_RECENT
+    from sespy.recent_projects import MAX_RECENT
 
     for i in range(MAX_RECENT):
         _wire_load(input, i, project_data, event_bus, entries, refresh)

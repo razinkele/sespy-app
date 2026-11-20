@@ -21,18 +21,18 @@ import dataclasses
 
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from ..constants import (
+from sespy.constants import (
     CONNECTION_POLARITY_LABELS,
     DAPSIWRM_ELEMENTS,
     DELAY_LEVELS,
     POLICY_TARGET_CODES,
 )
-from ..data_structure import Connection, Element, IsaData, Project
-from ..event_bus import EventBus
-from ..link_rules import note_for, seed_polarity
-from ..response_register import references_to
-from ..ui_i18n import Translator, t
-from ..utils import next_id
+from sespy.data_structure import Connection, Element, IsaData, Project
+from sespy_app.event_bus import EventBus
+from sespy.link_rules import note_for, seed_polarity
+from sespy.response_register import references_to
+from sespy_app.i18n import Translator, t
+from sespy.utils import next_id
 
 
 def _prefix_for(element_type: str) -> str:

@@ -10,21 +10,23 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..r_kb import Snapshot
+    from sespy.r_kb import Snapshot
 
 from shiny import reactive, render, ui
 
-from .. import __version__ as _sespy_version
-from .. import feedback_store, r_kb
-from ..autosave import autosave_age_seconds, clear_autosave
-from ..browser_token import read_browser_token
-from ..dashboard import language_switcher
-from ..input_utils import safe_int
-from ..ui_i18n import Translator
+import sespy
+import sespy_app
+from sespy import r_kb
+from sespy.autosave import autosave_age_seconds, clear_autosave
+from sespy.input_utils import safe_int
+from sespy_app import feedback_store
+from sespy_app.browser_token import read_browser_token
+from sespy_app.dashboard import language_switcher
+from sespy_app.i18n import Translator
 
 _THEME_CHOICES = {"light-marine": "Light Marine", "deep-ocean": "Deep Ocean (Dark)"}
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]   # sespy/modules/ -> repo root
+_REPO_ROOT = Path(__file__).resolve().parents[2]   # sespy_app/modules/ -> repo root
 
 
 def read_project_doc(name: str) -> str:
@@ -60,10 +62,9 @@ def manual_section(label: str, text: str | None = None, *,
 
 
 def _app_version() -> str:
-    # The shipped source's __version__ is authoritative: the app runs from the
-    # app_dir without an installed sespy distribution, so importlib.metadata
-    # would report a stale install (or nothing) rather than the deployed code.
-    return _sespy_version
+    # Both __version__ attributes are authoritative (importlib.metadata could
+    # report a stale install): the app's own release and the library it runs on.
+    return f"SESPy app {sespy_app.__version__} · sespy library {sespy.__version__}"
 
 _CATEGORY_KEYS = ("bug", "suggestion", "question", "other")
 
@@ -285,7 +286,7 @@ def _reference_data_section(translator, snapshot) -> ui.Tag | None:
 def _about_modal(translator, *, snapshot: Snapshot | None = None) -> ui.Tag:
     header = ui.markdown(
         f"### MarineSABRES SES Toolbox — Python\n\n"
-        f"**Version {_app_version()}** — developed within the "
+        f"**{_app_version()}** — developed within the "
         f"[MarineSABRES](https://marinesabres.eu) Horizon Europe project. "
         f"[Source](https://github.com/razinkele/SESPy). MIT licensed."
     )

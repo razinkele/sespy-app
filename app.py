@@ -1,6 +1,6 @@
 """Top-level Shiny for Python app — port of the MarineSABRES SES Toolbox.
 
-Uses `sespy.dashboard.dashboard_page` as the visual shell, which mirrors the
+Uses `sespy_app.dashboard.dashboard_page` as the visual shell, which mirrors the
 R app's bs4Dash layout: dark left sidebar (brand + nav + quick-actions),
 main content area with cards, footer.
 
@@ -17,56 +17,57 @@ from pathlib import Path
 from shiny import App, Inputs, Outputs, Session, reactive, ui
 
 from sespy import data_structure
-from sespy import ui_i18n as _i18n
+import sespy
+from sespy_app import i18n as _i18n
 from sespy import r_kb
-from sespy.dashboard import (
+from sespy_app.dashboard import (
     NavItem,
     StepperItem,
     dashboard_page,
     dashboard_server,
     workflow_stepper_slot,
 )
-from sespy.event_bus import create_event_bus
-from sespy.ui_i18n import Translator, detect_initial_language, load_translations
-from sespy.ui_r_kb import LAGUNA_R_DATA_DIR
-from sespy.modules.ai_isa_wizard import ai_isa_wizard_server, ai_isa_wizard_ui
-from sespy.modules.analysis_boolean import (
+from sespy_app.event_bus import create_event_bus
+from sespy_app.i18n import Translator, detect_initial_language, load_translations
+from sespy_app.kb_reads import LAGUNA_R_DATA_DIR
+from sespy_app.modules.ai_isa_wizard import ai_isa_wizard_server, ai_isa_wizard_ui
+from sespy_app.modules.analysis_boolean import (
     analysis_boolean_server,
     analysis_boolean_ui,
 )
-from sespy.modules.analysis_bot import analysis_bot_server, analysis_bot_ui
-from sespy.modules.analysis_intervention import (
+from sespy_app.modules.analysis_bot import analysis_bot_server, analysis_bot_ui
+from sespy_app.modules.analysis_intervention import (
     analysis_intervention_server,
     analysis_intervention_ui,
 )
-from sespy.modules.analysis_leverage import analysis_leverage_server, analysis_leverage_ui
-from sespy.modules.analysis_loops import analysis_loops_server, analysis_loops_ui
-from sespy.modules.analysis_metrics import analysis_metrics_server, analysis_metrics_ui
-from sespy.modules.analysis_quadrant import analysis_quadrant_server, analysis_quadrant_ui
-from sespy.modules.analysis_simplify import (
+from sespy_app.modules.analysis_leverage import analysis_leverage_server, analysis_leverage_ui
+from sespy_app.modules.analysis_loops import analysis_loops_server, analysis_loops_ui
+from sespy_app.modules.analysis_metrics import analysis_metrics_server, analysis_metrics_ui
+from sespy_app.modules.analysis_quadrant import analysis_quadrant_server, analysis_quadrant_ui
+from sespy_app.modules.analysis_simplify import (
     analysis_simplify_server,
     analysis_simplify_ui,
 )
-from sespy.modules.analysis_simulation import (
+from sespy_app.modules.analysis_simulation import (
     analysis_simulation_server,
     analysis_simulation_ui,
 )
-from sespy.modules.cld_visualization import cld_viz_server, cld_viz_ui
-from sespy.modules.import_data import import_data_server, import_data_ui
-from sespy.modules.isa_data_entry import isa_data_entry_server, isa_data_entry_ui
-from sespy.modules.pims_project import pims_project_server, pims_project_ui
-from sespy.modules.pims_stakeholders import (
+from sespy_app.modules.cld_visualization import cld_viz_server, cld_viz_ui
+from sespy_app.modules.import_data import import_data_server, import_data_ui
+from sespy_app.modules.isa_data_entry import isa_data_entry_server, isa_data_entry_ui
+from sespy_app.modules.pims_project import pims_project_server, pims_project_ui
+from sespy_app.modules.pims_stakeholders import (
     pims_stakeholders_server,
     pims_stakeholders_ui,
 )
-from sespy.browser_token import read_browser_token
-from sespy.modules.project_io import quick_actions_server, quick_actions_ui
-from sespy.modules.rate_connections import rate_connections_server, rate_connections_ui
-from sespy.modules.recent_projects import recent_projects_server, recent_projects_ui
-from sespy.modules.report_export import report_export_server, report_export_ui
-from sespy.modules.response_register import response_register_server, response_register_ui
-from sespy.modules.templates import templates_server, templates_ui
-from sespy.modules.topbar_actions import help_panel_ui, topbar_actions_server, topbar_actions_ui
+from sespy_app.browser_token import read_browser_token
+from sespy_app.modules.project_io import quick_actions_server, quick_actions_ui
+from sespy_app.modules.rate_connections import rate_connections_server, rate_connections_ui
+from sespy_app.modules.recent_projects import recent_projects_server, recent_projects_ui
+from sespy_app.modules.report_export import report_export_server, report_export_ui
+from sespy_app.modules.response_register import response_register_server, response_register_ui
+from sespy_app.modules.templates import templates_server, templates_ui
+from sespy_app.modules.topbar_actions import help_panel_ui, topbar_actions_server, topbar_actions_ui
 
 ROOT = Path(__file__).parent
 WWW = ROOT / "www"
@@ -75,12 +76,12 @@ WWW = ROOT / "www"
 # directory at the same relative URL so the paths resolve in-app too.
 STATIC_ASSETS = {"/": WWW, "/docs/screenshots": ROOT / "docs" / "screenshots"}
 SAMPLE = ROOT / "data" / "sample_ses.json"
-TRANSLATIONS_DIR = ROOT / "sespy" / "translations"
+TRANSLATIONS_DIR = Path(sespy.__file__).parent / "translations"
 
 # Translator is created at module-import time so the same instance feeds
 # UI construction (static labels) AND server-side reactive labels.
 T = Translator(translations=load_translations(TRANSLATIONS_DIR))
-_i18n.set_default(T)  # so modules can `from sespy.ui_i18n import t` and use `t(...)` directly
+_i18n.set_default(T)  # so modules can `from sespy_app.i18n import t` and use `t(...)` directly
 
 # K1 reference data: the registry reads server_settings.env beside this file.
 # Only server() below reads the registry; modules get the session snapshot.

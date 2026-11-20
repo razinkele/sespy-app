@@ -14,10 +14,10 @@ from datetime import datetime, timezone
 
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from ..constants import DA_SITES, SPATIAL_SCALES, TEMPORAL_SCALES
-from ..data_structure import Project
-from ..event_bus import EventBus
-from ..ui_i18n import Translator, t
+from sespy.constants import DA_SITES, SPATIAL_SCALES, TEMPORAL_SCALES
+from sespy.data_structure import Project
+from sespy_app.event_bus import EventBus
+from sespy_app.i18n import Translator, t
 
 _TEMPORAL_LABEL_KEYS = {
     "Daily": "pims.temporal_daily",

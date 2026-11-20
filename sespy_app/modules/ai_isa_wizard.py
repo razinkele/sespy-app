@@ -24,14 +24,14 @@ from shiny.module import resolve_id
 from shiny.testmode import export_test_values
 from shiny.types import SilentException
 
-from .. import r_kb
-from ..claude_backend import (  # NOTE: lazy import for runtime use lives in
+from sespy import r_kb
+from sespy.claude_backend import (  # NOTE: lazy import for runtime use lives in
     _REASON_TO_I18N,  #       claude_backend imports nothing from Shiny,
     ClaudeBackendError,  #       the @reactive.extended_task body (Task 13).
     ValidationOutcome,  #       These top-level imports are types only —
 )  #       and these are pure dataclasses, safe to import.
-from ..constants import ELEMENT_ID_PREFIX
-from ..data_structure import (
+from sespy.constants import ELEMENT_ID_PREFIX
+from sespy.data_structure import (
     Connection,
     ConnectionSuggestion,
     Element,
@@ -39,16 +39,16 @@ from ..data_structure import (
     Project,
     WizardState,
 )
-from ..event_bus import EventBus
-from ..kb_suggestions import (
+from sespy_app.event_bus import EventBus
+from sespy.kb_suggestions import (
     countries_for_sea,
     country_names_for,
     get_context_suggestions,
 )
-from ..ui_i18n import Translator, t
-from ..ui_r_kb import add_reads
-from ..utils import next_id
-from ..wizard import (
+from sespy_app.i18n import Translator, t
+from sespy_app.kb_reads import add_reads
+from sespy.utils import next_id
+from sespy.wizard import (
     ELEMENT_TYPE_MAP,
     REGIONAL_SEAS,
     WIZARD_STEPS,
@@ -56,7 +56,7 @@ from ..wizard import (
 )
 
 if TYPE_CHECKING:
-    from ..r_kb import Snapshot
+    from sespy.r_kb import Snapshot
 
 # ---------------------------------------------------------------------------
 # SP4 sum-typed status — distinguishes never-called, in-flight, returned-N,
@@ -1137,7 +1137,7 @@ def ai_isa_wizard_server(
         stale results (Back-while-loading race)."""
         # Lazy import inside the task body — runs only when the task is
         # invoked (not at module load).
-        from ..claude_backend import suggest_connections as _claude_impl
+        from sespy.claude_backend import suggest_connections as _claude_impl
         outcome = await asyncio.to_thread(_claude_impl, state)
         return (generation, outcome)
 

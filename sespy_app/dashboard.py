@@ -24,8 +24,8 @@ from pathlib import Path
 from htmltools import HTMLDependency, Tag
 from shiny import Inputs, Outputs, Session, reactive, render, ui
 
-from . import __version__ as _SESPY_VERSION
-from .ui_i18n import Translator
+from sespy_app import __version__ as _APP_VERSION
+from sespy_app.i18n import Translator
 
 LANGUAGE_INPUT_ID = "__sespy_language__"
 
@@ -39,7 +39,7 @@ STEP_INPUT_PREFIX = "sespy_step_"
 # order matters: skin defines tokens/guards, cld layers on it, themes overrides.
 _SKIN_DEP = HTMLDependency(
     name="sespy-shell-skin",
-    version=_SESPY_VERSION,
+    version=_APP_VERSION,
     source={"subdir": str(Path(__file__).parent / "www")},
     stylesheet=[
         {"href": "sespy-skin.css"},
@@ -441,7 +441,7 @@ def dashboard_server(
             _wire_step_button(input, session, step.id, target_nav, active_panel)
 
     # --- URL bookmarking (view-only): restore ?view on load, sync on change ---
-    from .bookmark import parse_view
+    from sespy.bookmark import parse_view
 
     _did_restore = [False]  # per-session closure-local — NOT a module global
     _valid_views = {item.id for item in nav_items}

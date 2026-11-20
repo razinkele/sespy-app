@@ -22,23 +22,23 @@ import logging
 
 from shiny import Inputs, Outputs, Session, reactive, render, ui
 
-from .. import data_structure as ds
-from .. import r_kb
-from ..autosave import (
+from sespy import data_structure as ds
+from sespy import r_kb
+from sespy.autosave import (
     autosave_age_seconds,
     clear_autosave,
     housekeeping,
     read_autosave,
     write_autosave,
 )
-from ..browser_token import browser_token_script, read_browser_token
-from ..event_bus import EventBus
-from ..ui_i18n import Translator
-from ..persistent_storage import (
+from sespy_app.browser_token import browser_token_script, read_browser_token
+from sespy_app.event_bus import EventBus
+from sespy_app.i18n import Translator
+from sespy.persistent_storage import (
     load_project,
     project_to_bytes,
 )
-from ..recent_projects import add_recent
+from sespy.recent_projects import add_recent
 
 logger = logging.getLogger(__name__)
 

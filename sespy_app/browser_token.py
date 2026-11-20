@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from shiny import ui
 
-from .autosave import valid_token
+from sespy.autosave import valid_token
 
 BROWSER_TOKEN_INPUT = "sespy_browser_token"
 

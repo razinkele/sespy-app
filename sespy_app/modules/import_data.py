@@ -23,13 +23,13 @@ from pathlib import Path
 
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from ..constants import DAPSIWRM_ELEMENTS
-from ..data_structure import Project
-from ..event_bus import EventBus
-from ..excel_import import parse_excel
-from ..persistent_storage import ValidationResult
-from ..qsem_import import build_project, parse_qsem, qsem_themes, resolve_theme_map, suggest_dapsiwrm_map
-from ..ui_i18n import Translator
+from sespy.constants import DAPSIWRM_ELEMENTS
+from sespy.data_structure import Project
+from sespy_app.event_bus import EventBus
+from sespy.excel_import import parse_excel
+from sespy.persistent_storage import ValidationResult
+from sespy.qsem_import import build_project, parse_qsem, qsem_themes, resolve_theme_map, suggest_dapsiwrm_map
+from sespy_app.i18n import Translator
 
 
 def parse_upload(name: str, datapath: Path | str) -> ValidationResult:

@@ -33,8 +33,8 @@ from typing import Any
 from shiny import reactive
 from shiny.session import get_current_session
 
-from . import i18n as _lib
-from .i18n import (
+from sespy import i18n as _lib
+from sespy.i18n import (
     DEFAULT_FALLBACK,
     SUPPORTED_LANGUAGES,
     detect_initial_language,

@@ -17,18 +17,18 @@ from pyvis.network import Network
 from pyvis.shiny import output_pyvis_network, render_pyvis_network
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
-from .. import network as net_analysis
-from ..constants import (
+from sespy import network as net_analysis
+from sespy.constants import (
     DEFAULT_GROUP_COLOR,
     DEFAULT_GROUP_SHAPE,
     EDGE_COLORS,
     ELEMENT_COLORS,
     ELEMENT_SHAPES,
 )
-from ..data_structure import IsaData, Project
-from ..event_bus import EventBus
-from ..input_utils import safe_int
-from ..ui_i18n import Translator, t
+from sespy.data_structure import IsaData, Project
+from sespy_app.event_bus import EventBus
+from sespy.input_utils import safe_int
+from sespy_app.i18n import Translator, t
 
 
 def _build_simplified_network(isa: IsaData) -> Network:
