@@ -1,13 +1,24 @@
-"""Behavioural tests for deploy/deploy.sh (K1 Task 17).
+"""Behavioural tests for deploy/deploy.sh (K1 Task 17; library split Task 6).
 
-The script runs for real, under the bundled MSYS bash, against a fake server
-tree in a temp dir: ``ssh`` and ``scp`` are stubs on PATH that execute locally
-(``ssh`` runs its remote command with bash, ``scp`` strips ``fake@host:`` and
-runs ``cp -r``), so the assertions are about real file-system state. There is
-no network: the stubs are verified to shadow the real ssh/scp before any run.
+The script runs for real, under bash, against a fake server tree in a temp
+dir: ``ssh`` and ``scp`` are stubs on PATH that execute locally (``ssh`` runs
+its remote command with bash, ``scp`` strips ``fake@host:`` and runs
+``cp -r``), so the assertions are about real file-system state. There is no
+network: the stubs are verified to shadow the real ssh/scp before any run.
+
+Two trees are faked per test: the app checkout (``repo``, built from this
+repo's files) and the pinned SESPy library checkout (``lib``, a real git repo
+tagged ``v<PIN>``, where PIN comes from this repo's pyproject direct
+reference). The deploy vendors ``lib/sespy`` beside the app's ``sespy_app``.
+
+The fake server starts empty, in the OLD layout (``sespy/`` is the monolith
+with ``modules/`` and the server-owned ``logs/feedback.db``) for the cutover
+tests, or in the NEW layout (``sespy/`` library + ``sespy_app/`` holding
+``logs/``) for the repeat-deploy tests.
 
 The temp repo has NO ``deploy/config.env`` (the real one would be sourced
-after the env and point the run at the production host).
+after the env and point the run at the production host); only
+test_skip_var_in_config_env_is_ignored writes one, inside its own temp repo.
 """
 from __future__ import annotations
 
@@ -22,17 +33,34 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "tests" / "parity"))
 
+import sespy  # noqa: E402
 from sespy import r_kb  # noqa: E402
-from sespy.ui_r_kb import LAGUNA_R_DATA_DIR  # noqa: E402
+
+from sespy_app.kb_reads import LAGUNA_R_DATA_DIR  # noqa: E402
+
+# The library's sespy/ package, and its checkout's tests/parity (check_live.py
+# lives in a library checkout, not in an installed wheel).
+LIB_SRC = Path(sespy.__file__).resolve().parent
+LIB_PARITY = LIB_SRC.parent / "tests" / "parity"
+if (LIB_PARITY / "check_live.py").is_file():
+    sys.path.insert(0, str(LIB_PARITY))
+
+_PIN_MATCH = re.search(r"@v(\d+\.\d+\.\d+)", (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+assert _PIN_MATCH, "pyproject.toml has no pinned sespy direct reference (@vX.Y.Z)"
+PIN = _PIN_MATCH.group(1)
 
 BASH = shutil.which("bash")
-pytestmark = pytest.mark.skipif(BASH is None, reason="bash is not available")
+GIT = shutil.which("git")
+pytestmark = pytest.mark.skipif(BASH is None or GIT is None, reason="bash and git are needed")
 
 SERVER = "fake@host"
 OVERRIDE_NAMES = ["ses_knowledge_db.json", "country_governance_db.json"]
 SAFE = re.compile(r"^/[A-Za-z0-9._/@+-]+$")
+
+
+def _check_live():
+    return pytest.importorskip("check_live", reason="needs a library checkout with tests/parity/check_live.py")
 
 
 def _posix(p: Path | str) -> str:
@@ -42,6 +70,16 @@ def _posix(p: Path | str) -> str:
         [BASH, "-c",
          'if command -v cygpath >/dev/null 2>&1; then cygpath -u "$1"; else printf "%s" "$1"; fi',
          "_", str(p)],
+        capture_output=True, text=True, check=True)
+    return out.stdout.strip()
+
+
+def _native(posix: str) -> str:
+    """What deploy.sh's native_path() hands python for a POSIX path."""
+    out = subprocess.run(
+        [BASH, "-c",
+         'if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf "%s" "$1"; fi',
+         "_", posix],
         capture_output=True, text=True, check=True)
     return out.stdout.strip()
 
@@ -56,6 +94,42 @@ def _copy_lf(src: Path, dst: Path) -> None:
     checkout may hold CRLF, which bash cannot run)."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_bytes(src.read_bytes().replace(b"\r\n", b"\n"))
+
+
+_GIT_CFG = ["-c", "user.name=deploy-test", "-c", "user.email=deploy-test@example.invalid",
+            "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "core.autocrlf=false",
+            "-c", "core.hooksPath=.no-hooks"]
+
+
+def _git(repo: Path, *args: str) -> str:
+    cp = subprocess.run([GIT, "-C", str(repo), *_GIT_CFG, *args], capture_output=True, text=True)
+    assert cp.returncode == 0, (args, cp.stdout, cp.stderr)
+    return cp.stdout
+
+
+def _build_lib(path: Path, pin: str, *, check_live: bool = True) -> Path:
+    """A fake library checkout: a git repo tagged v<pin> with sespy/__init__.py,
+    the shipped r_kb data the pre-flight reads and a stub check_live.py."""
+    _write_lf(path / "sespy" / "__init__.py", f'"""fake sespy library"""\n\n__version__ = "{pin}"\n')
+    dst = path / "sespy" / "data" / "r_kb"
+    dst.mkdir(parents=True, exist_ok=True)
+    for src in (LIB_SRC / "data" / "r_kb").iterdir():
+        if src.is_file():
+            shutil.copyfile(src, dst / src.name)
+    _write_lf(path / ".gitignore", "logs/\n__pycache__/\n")
+    if check_live:
+        _write_lf(path / "tests" / "parity" / "check_live.py", "# executed via the SESPY_PY stub\n")
+    if (LIB_PARITY / "r_sync.json").is_file():
+        _copy_lf(LIB_PARITY / "r_sync.json", path / "tests" / "parity" / "r_sync.json")
+    _git(path, "init", "-q")
+    _git(path, "config", "core.autocrlf", "false")
+    _git(path, "add", "-A")
+    _git(path, "commit", "-q", "-m", f"library {pin}")
+    _git(path, "tag", f"v{pin}")
+    # A git-ignored local runtime DB: the tree stays clean, but the stage must
+    # still strip it (it must never ship).
+    _write_lf(path / "sespy" / "logs" / "local.db", "LOCAL-LIB-DB")
+    return path
 
 
 STUB_SSH = """#!/usr/bin/bash
@@ -87,14 +161,11 @@ fi
 exit 1
 """
 
-STUB_GIT = """#!/usr/bin/bash
-echo v0.0.0-test
-"""
-
 # SESPY_PY stub: prints the allow-listed names with CRLF (as Windows python
 # does) and snapshots .live at call time ($STAGE is gone when the test asserts).
 STUB_CHECK_LIVE = """#!/usr/bin/bash
 printf 'check_live %s\\n' "$*" >> "$STUB_LOG"
+printf 'pythonpath %s\\n' "${PYTHONPATH:-}" >> "$STUB_LOG"
 for a in "$@"; do
   if [ "$a" = --print-override-names ]; then
     [ "${STUB_NO_NAMES:-}" = 1 ] && exit 0
@@ -116,18 +187,21 @@ exit "${STUB_EXIT:-0}"
 
 
 class Fake:
-    def __init__(self, base: Path):
+    def __init__(self, base: Path, lib_template: Path):
         base = base.resolve()
         self.base = base
         self.repo = base / "repo"
+        self.lib = base / "lib"
         self.server = base / "server"
         self.app = self.server / "app"
         self.live_dir = self.server / "marinesabres" / "data"
         self.stubs = base / "stubs"
         self.log = base / "stub.log"
         self._build_repo()
+        shutil.copytree(lib_template, self.lib)
         self._build_stubs()
         self.app_posix = _posix(self.app)
+        self.lib_posix = _posix(self.lib)
         self.live_posix = _posix(self.live_dir)
         assert SAFE.match(self.app_posix), f"temp path unusable for the test: {self.app_posix}"
         self.env = self._env()
@@ -137,23 +211,18 @@ class Fake:
     def _build_repo(self) -> None:
         r = self.repo
         _copy_lf(ROOT / "deploy" / "deploy.sh", r / "deploy" / "deploy.sh")
+        _copy_lf(ROOT / "pyproject.toml", r / "pyproject.toml")
         _write_lf(r / "app.py", "print('app')\n")
-        _write_lf(r / "sespy" / "__init__.py", "__version__ = 'test'\n")
-        for src in (ROOT / "sespy" / "data" / "r_kb").iterdir():
-            if src.is_file():
-                (r / "sespy" / "data" / "r_kb").mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(src, r / "sespy" / "data" / "r_kb" / src.name)
+        _write_lf(r / "sespy_app" / "__init__.py", '__version__ = "1.0.0"\n')
         # a local runtime DB that must never ship
-        _write_lf(r / "sespy" / "logs" / "local.db", "LOCAL-DEV-DB")
+        _write_lf(r / "sespy_app" / "logs" / "local.db", "LOCAL-DEV-DB")
         _write_lf(r / "docs" / "MANUAL.md", "# Manual\n")
         (r / "docs" / "screenshots").mkdir(parents=True, exist_ok=True)
-        _copy_lf(ROOT / "tests" / "parity" / "r_sync.json", r / "tests" / "parity" / "r_sync.json")
-        _write_lf(r / "tests" / "parity" / "check_live.py", "# executed via the SESPY_PY stub\n")
         assert not (r / "deploy" / "config.env").exists()
 
     def _build_stubs(self) -> None:
         for name, body in (("ssh", STUB_SSH), ("scp", STUB_SCP), ("sudo", STUB_SUDO),
-                           ("git", STUB_GIT), ("fake_check_live", STUB_CHECK_LIVE)):
+                           ("fake_check_live", STUB_CHECK_LIVE)):
             _write_lf(self.stubs / name, body)
             # A shebang alone does not make a file runnable on POSIX (Git Bash
             # on Windows ignores the mode, which hid this locally).
@@ -161,12 +230,13 @@ class Fake:
 
     def _env(self) -> dict[str, str]:
         env = dict(os.environ)
-        for k in ("DEPLOY_REPO_ROOT", "DEPLOY_MOSAIC_DIR", "DEPLOY_SUDO_TEST",
+        for k in ("DEPLOY_REPO_ROOT", "DEPLOY_LIBRARY_ROOT", "DEPLOY_MOSAIC_DIR", "DEPLOY_SUDO_TEST",
                   "SESPY_SKIP_LIVE_CHECK", "STUB_EXIT", "SESPY_R_DATA_DIR"):
             env.pop(k, None)
         env.update(
             DEPLOY_SERVER=SERVER,
             DEPLOY_DIR=self.app_posix,
+            DEPLOY_LIBRARY_ROOT=self.lib_posix,
             SESPY_PY="fake_check_live",
             STUB_LOG=_posix(self.log),
             STUB_DIR=_posix(self.stubs),
@@ -175,11 +245,11 @@ class Fake:
         return env
 
     def _assert_stubs_shadow(self) -> None:
-        out = subprocess.run([BASH, "-c", "command -v ssh scp sudo git fake_check_live"],
+        out = subprocess.run([BASH, "-c", "command -v ssh scp sudo fake_check_live"],
                              env=self.env, capture_output=True, text=True)
         found = out.stdout.split()
         want = _posix(self.stubs)
-        assert len(found) == 5 and all(f.startswith(want + "/") for f in found), (
+        assert len(found) == 4 and all(f.startswith(want + "/") for f in found), (
             f"stubs do not shadow the real tools; refusing to run deploy.sh: {found}")
 
     # -- server state ----------------------------------------------------
@@ -188,6 +258,24 @@ class Fake:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(data.encode() if isinstance(data, str) else data)
         return p
+
+    def old_layout(self, db: bytes | None = None, wal: bytes | None = None) -> None:
+        """Pre-split server: sespy/ is the monolith and owns logs/."""
+        self.put("sespy/__init__.py", '__version__ = "1.17.1"\n')
+        self.put("sespy/modules/legacy_view.py", "monolith UI")
+        if db is not None:
+            self.put("sespy/logs/feedback.db", db)
+        if wal is not None:
+            self.put("sespy/logs/feedback.db-wal", wal)
+
+    def new_layout(self, db: bytes | None = None, wal: bytes | None = None) -> None:
+        """Post-cutover server: sespy/ is the library, sespy_app/ owns logs/."""
+        self.put("sespy/__init__.py", '__version__ = "1.17.9"\n')
+        self.put("sespy_app/__init__.py", '__version__ = "0.9.0"\n')
+        if db is not None:
+            self.put("sespy_app/logs/feedback.db", db)
+        if wal is not None:
+            self.put("sespy_app/logs/feedback.db-wal", wal)
 
     def settings(self, text: str) -> None:
         self.put("server_settings.env", text)
@@ -231,17 +319,25 @@ class Fake:
     def fetch_scps(self) -> list[str]:
         return [c for c in self.calls("scp") if f"{SERVER}:" in c.split()[2]]
 
+    def incoming_scps(self) -> list[str]:
+        return [c for c in self.calls("scp") if c.split()[-1].endswith(".incoming")]
+
     @property
     def seen_live(self) -> Path:
         return self.stubs / "seen_live"
 
 
+@pytest.fixture(scope="module")
+def lib_template(tmp_path_factory) -> Path:
+    return _build_lib(tmp_path_factory.mktemp("libtpl").resolve() / "lib", PIN)
+
+
 @pytest.fixture
-def make_fake(tmp_path):
+def make_fake(tmp_path, lib_template):
     counter = iter(range(100))
 
     def _make() -> Fake:
-        return Fake(tmp_path / f"f{next(counter)}")
+        return Fake(tmp_path / f"f{next(counter)}", lib_template)
     return _make
 
 
@@ -254,6 +350,20 @@ def _ok(cp: subprocess.CompletedProcess, fake: Fake) -> None:
     assert cp.returncode == 0, fake.out
 
 
+def _rescued(fake: Fake) -> list[Path]:
+    return sorted(p for p in fake.app.iterdir() if p.name.startswith("logs.rescued-"))
+
+
+SWAP_APP = "mv -T sespy_app.incoming sespy_app"
+SWAP_LIB = "mv -T sespy.incoming sespy"
+
+
+def _swap_cmd(fake: Fake) -> str:
+    cmds = [c for c in fake.calls("ssh") if SWAP_APP in c or SWAP_LIB in c]
+    assert len(cmds) == 1, cmds
+    return cmds[0]
+
+
 # ---------------------------------------------------------------------------
 def test_bash_syntax(fake):
     cp = subprocess.run([BASH, "-n", _posix(fake.repo / "deploy" / "deploy.sh")],
@@ -264,82 +374,137 @@ def test_bash_syntax(fake):
 def test_first_deploy_without_existing_sespy(fake):
     assert not fake.app.exists()
     _ok(fake.run(), fake)
-    assert (fake.app / "sespy" / "__init__.py").is_file()
+    assert (fake.app / "sespy" / "__init__.py").read_text() == (fake.lib / "sespy" / "__init__.py").read_text()
     assert (fake.app / "sespy" / "data" / "r_kb" / "manifest.json").is_file()
-    assert not (fake.app / "sespy.old").exists()
-    assert not (fake.app / "sespy.incoming").exists()
+    assert (fake.app / "sespy_app" / "__init__.py").is_file()
+    for leftover in ("sespy.old", "sespy.incoming", "sespy_app.old", "sespy_app.incoming"):
+        assert not (fake.app / leftover).exists(), leftover
+    assert not (fake.app / "sespy" / "logs").exists(), "the library's local logs must never ship"
+    assert not (fake.app / "sespy_app" / "logs").exists(), "the app's local logs must never ship"
     assert (fake.app / "app.py").is_file()
     assert (fake.app / "docs" / "MANUAL.md").is_file()
     assert (fake.app / "restart.txt").is_file()
 
 
 def test_uses_incoming_swap(fake):
+    fake.new_layout()
     fake.put("sespy/old_module.py", "old")
+    fake.put("sespy_app/old_view.py", "old")
     _ok(fake.run(), fake)
-    sespy_scps = [c for c in fake.calls("scp") if c.split()[-2].endswith("/sespy")]
-    assert len(sespy_scps) == 1
-    assert sespy_scps[0].split()[-1] == f"{SERVER}:{fake.app_posix}/sespy.incoming"
-    assert any("mv -T sespy.incoming sespy" in c for c in fake.calls("ssh"))
+    targets = sorted(c.split()[-1] for c in fake.incoming_scps())
+    assert targets == [f"{SERVER}:{fake.app_posix}/sespy.incoming",
+                       f"{SERVER}:{fake.app_posix}/sespy_app.incoming"]
+    swap = _swap_cmd(fake)
+    assert SWAP_APP in swap and SWAP_LIB in swap
     assert not (fake.app / "sespy" / "old_module.py").exists()
+    assert not (fake.app / "sespy_app" / "old_view.py").exists()
 
 
 def test_app_py_uploaded_after_swap(fake):
     _ok(fake.run(), fake)
     lines = fake.log_lines()
-    i_incoming = next(i for i, ln in enumerate(lines)
-                      if ln.startswith("scp ") and ln.endswith("/sespy.incoming"))
+    i_incoming = max(i for i, ln in enumerate(lines)
+                     if ln.startswith("scp ") and ln.endswith(".incoming"))
     i_swap = next(i for i, ln in enumerate(lines)
-                  if ln.startswith("ssh ") and "mv -T sespy.incoming sespy" in ln)
+                  if ln.startswith("ssh ") and SWAP_LIB in ln)
     i_app = next(i for i, ln in enumerate(lines)
                  if ln.startswith("scp ") and "/app.py" in ln)
     assert i_incoming < i_swap < i_app
     app_scp = lines[i_app].split()
-    assert not any(a.endswith("/sespy") for a in app_scp), "sespy must be excluded from the glob scp"
+    assert not any(a.endswith(("/sespy", "/sespy_app")) for a in app_scp), (
+        "sespy and sespy_app must be excluded from the glob scp")
 
 
 def test_logs_moved_into_incoming_before_swap(fake):
     payload = bytes(range(256)) * 7
-    fake.put("sespy/logs/feedback.db", payload)
-    fake.put("sespy/old_module.py", "old")
+    fake.new_layout(db=payload)
+    fake.put("sespy_app/old_view.py", "old")
     _ok(fake.run(), fake)
-    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == payload
-    assert not (fake.app / "sespy" / "old_module.py").exists()
-    assert not (fake.app / "sespy" / "logs" / "local.db").exists(), "local logs must never ship"
-    assert not (fake.app / "sespy" / "logs" / "logs").exists()
-    swap = next(c for c in fake.calls("ssh") if "mv -T sespy.incoming sespy" in c)
-    assert swap.index("mv -T sespy/logs sespy.incoming/logs") < swap.index("mv -T sespy.incoming sespy")
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == payload
+    assert not (fake.app / "sespy_app" / "old_view.py").exists()
+    assert not (fake.app / "sespy_app" / "logs" / "local.db").exists(), "local logs must never ship"
+    assert not (fake.app / "sespy_app" / "logs" / "logs").exists()
+    assert not (fake.app / "sespy" / "logs").exists()
+    swap = _swap_cmd(fake)
+    assert swap.index("mv -T sespy_app/logs sespy_app.incoming/logs") < swap.index(SWAP_APP)
 
 
 def test_recovers_interrupted_swap(fake):
+    """The swap died between the two sespy_app renames."""
     payload = b"FEEDBACK-OLD-" * 50
-    fake.put("sespy.old/logs/feedback.db", payload)
-    fake.put("sespy.old/stale.py", "old")
+    fake.put("sespy/__init__.py", "library")
+    fake.put("sespy_app.old/logs/feedback.db", payload)
+    fake.put("sespy_app.old/stale.py", "old")
     _ok(fake.run(), fake)
-    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == payload
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == payload
+    assert not (fake.app / "sespy_app.old").exists()
+    assert not (fake.app / "sespy_app" / "stale.py").exists()
+    assert _rescued(fake) == []
+
+
+def test_recovers_pre_cutover_interrupted_swap(fake):
+    """The OLD script died between its two sespy renames (no sespy_app yet):
+    the monolith comes back, then the cutover moves its logs."""
+    payload = b"FEEDBACK-PRECUT-" * 50
+    fake.put("sespy.old/logs/feedback.db", payload)
+    fake.put("sespy.old/modules/x.py", "old")
+    _ok(fake.run(), fake)
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == payload
+    assert not (fake.app / "sespy" / "logs").exists()
+    assert not (fake.app / "sespy" / "modules").exists()
     assert not (fake.app / "sespy.old").exists()
-    assert not (fake.app / "sespy" / "stale.py").exists()
+    assert _rescued(fake) == []
 
 
 def test_recovers_logs_left_in_incoming(fake):
-    """Died after logs moved into sespy.incoming but before the swap: the
-    prologue must rescue them before it wipes sespy.incoming."""
+    """Died after logs moved into sespy_app.incoming but before the swap: the
+    prologue must rescue them before it wipes sespy_app.incoming."""
     payload = b"FEEDBACK-INCOMING-" * 40
-    fake.put("sespy/__init__.py", "old")
+    fake.new_layout()
+    fake.put("sespy_app.incoming/logs/feedback.db", payload)
+    _ok(fake.run(), fake)
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == payload
+    assert not (fake.app / "sespy_app.incoming").exists()
+
+
+def test_recovers_cutover_logs_left_in_incoming(fake):
+    """The cutover died after sespy/logs moved into sespy_app.incoming: with
+    no sespy_app/ yet the logs return to sespy/logs (the old layout, intact;
+    never a bare sespy_app/ MosaicSES would import), and the rerun migrates."""
+    payload = b"FEEDBACK-CUTOVER-" * 40
+    fake.old_layout()
+    fake.put("sespy_app.incoming/logs/feedback.db", payload)
+    fake.put("sespy_app.incoming/__init__.py", "half uploaded")
+    _ok(fake.run(), fake)
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == payload
+    assert not (fake.app / "sespy" / "logs").exists()
+    assert not (fake.app / "sespy_app.incoming").exists()
+    prologue = [c for c in fake.calls("ssh") if "rescue_logs sespy_app.incoming" in c]
+    assert len(prologue) == 1
+    assert "rm -rf sespy_app.old sespy_app.incoming sespy.old sespy.incoming" in prologue[0]
+
+
+def test_recovers_pre_cutover_logs_left_in_incoming(fake):
+    """The OLD script died after moving sespy/logs into sespy.incoming."""
+    payload = b"FEEDBACK-OLD-INCOMING-" * 40
+    fake.old_layout()
     fake.put("sespy.incoming/logs/feedback.db", payload)
     _ok(fake.run(), fake)
-    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == payload
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == payload
+    assert not (fake.app / "sespy" / "logs").exists()
     assert not (fake.app / "sespy.incoming").exists()
 
 
 def test_recovers_logs_when_swap_died_between_moves(fake):
-    """sespy -> sespy.old done, incoming (holding logs) not yet renamed."""
+    """sespy_app -> sespy_app.old done, incoming (holding logs) not yet renamed."""
     payload = b"FEEDBACK-MIDSWAP-" * 40
-    fake.put("sespy.old/__init__.py", "old")
-    fake.put("sespy.incoming/logs/feedback.db", payload)
+    fake.put("sespy/__init__.py", "library")
+    fake.put("sespy_app.old/__init__.py", "old")
+    fake.put("sespy_app.incoming/logs/feedback.db", payload)
     _ok(fake.run(), fake)
-    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == payload
-    assert not (fake.app / "sespy.old").exists()
-    assert not (fake.app / "sespy.incoming").exists()
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == payload
+    assert not (fake.app / "sespy_app.old").exists()
+    assert not (fake.app / "sespy_app.incoming").exists()
 
 
 def test_recovers_deploy_keep_logs(fake):
@@ -347,17 +512,20 @@ def test_recovers_deploy_keep_logs(fake):
     fake.put(".deploy-keep/logs/feedback.db", payload)
     fake.put("sespy/__init__.py", "half-deployed by the old script")
     _ok(fake.run(), fake)
-    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == payload
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == payload
+    assert not (fake.app / "sespy" / "logs").exists()
     assert not (fake.app / ".deploy-keep").exists()
 
 
 def test_incoming_removed_before_upload(fake):
     fake.put("sespy.incoming/x", "leftover")
+    fake.put("sespy_app.incoming/x", "leftover")
     _ok(fake.run(), fake)
-    assert not (fake.app / "sespy.incoming").exists()
-    assert not (fake.app / "sespy" / "x").exists()
-    assert not (fake.app / "sespy" / "sespy").exists(), "upload nested into a leftover dir"
-    assert (fake.app / "sespy" / "__init__.py").is_file()
+    for pkg in ("sespy", "sespy_app"):
+        assert not (fake.app / f"{pkg}.incoming").exists()
+        assert not (fake.app / pkg / "x").exists()
+        assert not (fake.app / pkg / pkg).exists(), "upload nested into a leftover dir"
+        assert (fake.app / pkg / "__init__.py").is_file()
 
 
 def test_settings_file_created_only_if_absent_with_0644(make_fake):
@@ -416,13 +584,16 @@ def test_version_info_fetched_from_parent(fake):
 
 
 def test_check_live_nonzero_aborts_before_upload(fake):
+    fake.old_layout(db=b"DB")
     fake.put("sespy/marker.py", "live code")
     fake.settings_on()
     cp = fake.run(STUB_EXIT="2")
     assert cp.returncode == 2, fake.out
-    assert not any(c.split()[-1].endswith("/sespy.incoming") for c in fake.calls("scp"))
+    assert fake.incoming_scps() == []
     assert not any("mv -T sespy" in c for c in fake.calls("ssh"))
     assert (fake.app / "sespy" / "marker.py").read_text() == "live code"
+    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == b"DB"
+    assert not (fake.app / "sespy_app").exists()
     assert not (fake.app / "restart.txt").exists()
 
 
@@ -468,7 +639,7 @@ def test_override_names_from_check_live(fake):
 def test_outputs_fit_the_real_check_live_contract(fake):
     """The stub stands in for check_live; check the argv and perms.txt that
     deploy.sh produced against the REAL parser and perms reader."""
-    import check_live
+    check_live = _check_live()
     fake.settings_on()
     _ok(fake.run(), fake)
     argv = fake.check_calls()[0].split()[2:]  # drop "check_live" and the script path
@@ -503,14 +674,14 @@ def test_gitignore_has_server_settings():
 
 def test_config_example_documents_optional_settings():
     text = (ROOT / "deploy" / "config.env.example").read_text(encoding="utf-8")
-    for key in ("DEPLOY_MOSAIC_DIR", "DEPLOY_REPO_ROOT", "DEPLOY_SUDO_TEST"):
+    for key in ("DEPLOY_LIBRARY_ROOT", "DEPLOY_MOSAIC_DIR", "DEPLOY_REPO_ROOT", "DEPLOY_SUDO_TEST"):
         assert key in text
 
 
 def test_absent_check_live_skips_fetch_and_check(fake):
-    (fake.repo / "tests" / "parity" / "check_live.py").unlink()
+    lib = _build_lib(fake.base / "lib_without_check_live", PIN, check_live=False)
     fake.settings_on()
-    _ok(fake.run(), fake)
+    _ok(fake.run(DEPLOY_LIBRARY_ROOT=_posix(lib)), fake)
     assert fake.calls("check_live") == []
     assert fake.fetch_scps() == []
     assert "check_live.py is absent" in fake.out
@@ -564,7 +735,7 @@ def test_sudo_test_only_when_enabled(make_fake):
 
 
 def test_sudo_test_success_lines_accepted_by_check_live(fake):
-    import check_live
+    check_live = _check_live()
     fake.settings_on()
     _ok(fake.run(DEPLOY_SUDO_TEST="1", STUB_SUDO_OK="1"), fake)
     perms = (fake.seen_live / "perms.txt").read_text().splitlines()
@@ -573,19 +744,37 @@ def test_sudo_test_success_lines_accepted_by_check_live(fake):
 
 
 def test_repo_root_override_deploys_other_checkout(fake):
-    """Rollback mechanics: the CURRENT script deploys an old-tag worktree."""
-    old = fake.base / "old_tag"
-    _write_lf(old / "app.py", "print('old tag')\n")
-    _write_lf(old / "sespy" / "__init__.py", "__version__ = '1.15.1'\n")
+    """Rollback mechanics, app version to app version: the CURRENT script
+    deploys an older sespy-app worktree with the library tag it pins."""
+    old = fake.base / "old_app"
+    _write_lf(old / "app.py", "print('old app')\n")
+    _write_lf(old / "sespy_app" / "__init__.py", '__version__ = "0.9.0"\n')
+    _write_lf(old / "pyproject.toml",
+              'dependencies = ["sespy[pdf] @ git+https://example.invalid/SESPy@v1.17.9"]\n')
     _write_lf(old / "docs" / "MANUAL.md", "# Old manual\n")
     (old / "docs" / "screenshots").mkdir(parents=True)
+    old_lib = _build_lib(fake.base / "old_lib", "1.17.9")
+    fake.new_layout(db=b"KEEP-ME")
     fake.settings_on()
-    _ok(fake.run("--rollback", DEPLOY_REPO_ROOT=_posix(old)), fake)
-    assert (fake.app / "app.py").read_text() == "print('old tag')\n"
-    assert (fake.app / "sespy" / "__init__.py").read_text() == "__version__ = '1.15.1'\n"
-    assert not (fake.app / "sespy" / "data").exists()
-    assert fake.calls("check_live") == []  # pre-K1 tree: no check_live.py
-    assert "check_live.py is absent" in fake.out
+    _ok(fake.run("--rollback", DEPLOY_REPO_ROOT=_posix(old), DEPLOY_LIBRARY_ROOT=_posix(old_lib)), fake)
+    assert (fake.app / "app.py").read_text() == "print('old app')\n"
+    assert (fake.app / "sespy_app" / "__init__.py").read_text() == '__version__ = "0.9.0"\n'
+    assert '__version__ = "1.17.9"' in (fake.app / "sespy" / "__init__.py").read_text()
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == b"KEEP-ME"
+    checks = fake.check_calls()
+    assert len(checks) == 1 and "--warn-only" in checks[0]
+    assert _native(_posix(old_lib / "tests" / "parity" / "check_live.py")) in checks[0]
+
+
+def test_rollback_still_validates_the_library(fake):
+    old = fake.base / "old_app"
+    _write_lf(old / "app.py", "print('old app')\n")
+    _write_lf(old / "sespy_app" / "__init__.py", '__version__ = "0.9.0"\n')
+    _write_lf(old / "pyproject.toml", 'dependencies = ["sespy @ git+https://example.invalid/SESPy@v1.17.9"]\n')
+    cp = fake.run("--rollback", DEPLOY_REPO_ROOT=_posix(old))  # library still at v<PIN>
+    assert cp.returncode != 0
+    assert "v1.17.9" in fake.out
+    assert fake.calls("scp") == [] and fake.calls("ssh") == []
 
 
 def test_default_dir_used_when_settings_absent(fake):
@@ -599,57 +788,52 @@ def test_default_dir_used_when_settings_absent(fake):
 # Fix round 1: stranded logs (I1), non-blocking tail (M6), gates (M4/M5/M8),
 # failing swap (M10)
 # ---------------------------------------------------------------------------
-def _rescued(fake: Fake) -> list[Path]:
-    return sorted(p for p in fake.app.iterdir() if p.name.startswith("logs.rescued-"))
-
-
 def test_incoming_logs_kept_when_sespy_logs_recreated(fake):
-    """Swap died after logs moved into sespy.incoming; a worker then recreated
-    an empty sespy/logs. The real history must not be deleted with incoming."""
+    """Swap died after logs moved into sespy_app.incoming; a worker then
+    recreated an empty sespy_app/logs. The real history must not be deleted
+    with incoming."""
     real = b"REAL-HISTORY-" * 64
-    fake.put("sespy/__init__.py", "old")
-    fake.put("sespy/logs/feedback.db", b"NEW-EMPTY")
-    fake.put("sespy.incoming/logs/feedback.db", real)
+    fake.new_layout(db=b"NEW-EMPTY")
+    fake.put("sespy_app.incoming/logs/feedback.db", real)
     _ok(fake.run(), fake)
-    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == b"NEW-EMPTY"
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == b"NEW-EMPTY"
     rescued = _rescued(fake)
     assert len(rescued) == 1
     assert (rescued[0] / "feedback.db").read_bytes() == real
-    assert "sespy.incoming/logs was stranded" in fake.out
-    assert not (fake.app / "sespy.incoming").exists()
+    assert "sespy_app.incoming/logs was stranded" in fake.out
+    assert not (fake.app / "sespy_app.incoming").exists()
 
 
 def test_old_logs_kept_when_sespy_present(make_fake):
     real = b"REAL-OLD-HISTORY-" * 64
-    # sespy present WITH recreated logs: old logs go aside
+    # sespy_app present WITH recreated logs: old logs go aside
     f1 = make_fake()
-    f1.put("sespy/__init__.py", "recreated")
-    f1.put("sespy/logs/feedback.db", b"NEW-EMPTY")
-    f1.put("sespy.old/logs/feedback.db", real)
+    f1.new_layout(db=b"NEW-EMPTY")
+    f1.put("sespy_app.old/logs/feedback.db", real)
     _ok(f1.run(), f1)
-    assert (f1.app / "sespy" / "logs" / "feedback.db").read_bytes() == b"NEW-EMPTY"
+    assert (f1.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == b"NEW-EMPTY"
     rescued = _rescued(f1)
     assert len(rescued) == 1 and (rescued[0] / "feedback.db").read_bytes() == real
-    assert "sespy.old/logs was stranded" in f1.out
-    assert not (f1.app / "sespy.old").exists()
+    assert "sespy_app.old/logs was stranded" in f1.out
+    assert not (f1.app / "sespy_app.old").exists()
 
-    # sespy present WITHOUT logs: old logs are restored in place
+    # sespy_app present WITHOUT logs: old logs are restored in place
     f2 = make_fake()
-    f2.put("sespy/__init__.py", "recreated")
-    f2.put("sespy.old/logs/feedback.db", real)
+    f2.new_layout()
+    f2.put("sespy_app.old/logs/feedback.db", real)
     _ok(f2.run(), f2)
-    assert (f2.app / "sespy" / "logs" / "feedback.db").read_bytes() == real
+    assert (f2.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == real
     assert _rescued(f2) == []
-    assert not (f2.app / "sespy.old").exists()
+    assert not (f2.app / "sespy_app.old").exists()
 
 
 def test_failing_swap_step_aborts(fake):
-    fake.put("sespy/logs/feedback.db", b"DB")
-    cp = fake.run(STUB_SSH_FAIL="mv -T sespy.incoming sespy", STUB_SSH_FAIL_RC="1")
+    fake.new_layout(db=b"DB")
+    cp = fake.run(STUB_SSH_FAIL=SWAP_LIB, STUB_SSH_FAIL_RC="1")
     assert cp.returncode != 0
     assert not any("/app.py" in c for c in fake.calls("scp")), "app.py uploaded after a failed swap"
     assert not (fake.app / "restart.txt").exists()
-    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == b"DB"
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == b"DB"
 
 
 def test_settings_create_failure_still_restarts(fake):
@@ -692,8 +876,12 @@ def test_empty_skip_var_counts_as_unset(fake):
 
 
 def test_skip_var_in_config_env_is_ignored(fake):
+    # The one test that writes a config.env, inside its own temp repo. It also
+    # pins DEPLOY_LIBRARY_ROOT precedence: the env value beats config.env's
+    # (so a rollback can pass an older library per run).
     _write_lf(fake.repo / "deploy" / "config.env",
               f"DEPLOY_SERVER={SERVER}\nDEPLOY_DIR={fake.app_posix}\n"
+              "DEPLOY_LIBRARY_ROOT=/no/such/library\n"
               "SESPY_SKIP_LIVE_CHECK=from-config\n")
     fake.settings_on()
     _ok(fake.run(), fake)
@@ -717,6 +905,165 @@ def test_no_override_names_gates_unless_rollback(make_fake):
     checks = f2.check_calls()
     assert len(checks) == 1 and "--live" not in checks[0]
     assert (f2.app / "sespy" / "__init__.py").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Library split (Task 6): pinned library vendored, sespy_app swapped first,
+# feedback.db moves to sespy_app/logs once
+# ---------------------------------------------------------------------------
+def _move_past_tag(lib: Path) -> None:
+    _write_lf(lib / "NEWS.md", "unreleased\n")
+    _git(lib, "add", "-A")
+    _git(lib, "commit", "-q", "-m", "one commit past the tag")
+
+
+def _make_dirty(lib: Path) -> None:
+    _write_lf(lib / "sespy" / "stray.py", "# untracked, would ship with cp -R\n")
+
+
+def _version_mismatch(lib: Path) -> None:
+    _write_lf(lib / "sespy" / "__init__.py", '__version__ = "9.9.9"\n')
+    _git(lib, "add", "-A")
+    _git(lib, "commit", "-q", "-m", "wrong version")
+    _git(lib, "tag", "-f", f"v{PIN}")
+
+
+@pytest.mark.parametrize("breakage", [_move_past_tag, _make_dirty, _version_mismatch],
+                         ids=["wrong_tag", "dirty", "version_mismatch"])
+def test_library_root_must_match_pin(fake, breakage):
+    fake.old_layout(db=b"DB")
+    fake.settings_on()
+    breakage(fake.lib)
+    cp = fake.run()
+    assert cp.returncode != 0, fake.out
+    assert f"v{PIN}" in fake.out
+    assert fake.calls("scp") == [], "nothing may be fetched or uploaded"
+    assert fake.calls("ssh") == [], "the library is validated before any remote call"
+    assert fake.calls("check_live") == []
+    assert not (fake.app / "sespy_app").exists()
+    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == b"DB"
+
+
+def test_library_root_unset_aborts(fake):
+    cp = fake.run(DEPLOY_LIBRARY_ROOT="")
+    assert cp.returncode != 0
+    assert "DEPLOY_LIBRARY_ROOT" in fake.out and f"v{PIN}" in fake.out
+    assert fake.calls("scp") == [] and fake.calls("ssh") == []
+
+
+def test_cutover_moves_feedback_db_once(fake):
+    db = b"SQLite format 3\x00" + bytes(range(256)) * 9
+    wal = b"WAL-FRAMES-" * 33
+    fake.old_layout(db=db, wal=wal)
+    _ok(fake.run(), fake)
+    logs = fake.app / "sespy_app" / "logs"
+    assert (logs / "feedback.db").read_bytes() == db
+    assert (logs / "feedback.db-wal").read_bytes() == wal
+    assert not (fake.app / "sespy" / "logs").exists()
+    assert not (fake.app / "sespy" / "modules").exists(), "the monolith is replaced by the library"
+    assert _rescued(fake) == []
+    swap = _swap_cmd(fake)
+    assert swap.index("mv -T sespy/logs sespy_app.incoming/logs") < swap.index(SWAP_APP)
+
+    # once: the next deploy keeps the store where it now lives
+    fake.log.unlink()
+    _ok(fake.run(), fake)
+    assert (logs / "feedback.db").read_bytes() == db
+    assert (logs / "feedback.db-wal").read_bytes() == wal
+    assert not (fake.app / "sespy" / "logs").exists()
+    assert _rescued(fake) == []
+
+
+def test_two_feedback_dbs_abort_before_swap(fake):
+    fake.old_layout(db=b"MONOLITH-DB")
+    fake.put("sespy_app/__init__.py", "app")
+    fake.put("sespy_app/logs/feedback.db", b"APP-DB")
+    cp = fake.run()
+    assert cp.returncode != 0
+    assert "two feedback stores" in fake.out
+    assert f"{fake.app_posix}/sespy/logs" in fake.out and f"{fake.app_posix}/sespy_app/logs" in fake.out
+    assert fake.incoming_scps() == []
+    assert not any(SWAP_APP in c or SWAP_LIB in c for c in fake.calls("ssh"))
+    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == b"MONOLITH-DB"
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == b"APP-DB"
+    assert not (fake.app / "restart.txt").exists()
+
+
+def test_swap_order_uploads_then_one_rename_chain(fake):
+    fake.old_layout(db=b"DB")
+    _ok(fake.run(), fake)
+    lines = fake.log_lines()
+    renames = ("mv -T sespy_app sespy_app.old", SWAP_APP, "mv -T sespy sespy.old", SWAP_LIB)
+    i_app_in = next(i for i, ln in enumerate(lines)
+                    if ln.startswith("scp ") and ln.endswith(f"{SERVER}:{fake.app_posix}/sespy_app.incoming"))
+    i_lib_in = next(i for i, ln in enumerate(lines)
+                    if ln.startswith("scp ") and ln.endswith(f"{SERVER}:{fake.app_posix}/sespy.incoming"))
+    i_first_rename = next(i for i, ln in enumerate(lines)
+                          if ln.startswith("ssh ") and any(r in ln for r in renames))
+    assert i_app_in < i_first_rename and i_lib_in < i_first_rename
+    chain = lines[i_first_rename]
+    positions = [chain.index(r) for r in renames]
+    assert positions == sorted(positions), "sespy_app pair first, then the sespy pair"
+    assert sum(any(r in ln for r in renames) for ln in lines if ln.startswith("ssh ")) == 1, (
+        "both rename pairs sit in one ssh command")
+    i_app_py = next(i for i, ln in enumerate(lines) if ln.startswith("scp ") and "/app.py" in ln)
+    assert i_app_py > i_first_rename
+
+
+def test_old_worker_db_after_swap_is_rescued(fake):
+    """An old-code worker recreates sespy/logs inside the NEW library right
+    after the sespy rename: it is moved aside, never deleted."""
+    db = b"REAL-FEEDBACK-" * 40
+    fake.old_layout(db=db)
+    prelude = ('mv() { command mv "$@" || return; '
+               'if [ "$*" = "-T sespy.incoming sespy" ]; then '
+               'mkdir -p sespy/logs && printf OLD-WORKER > sespy/logs/feedback.db; fi; }')
+    _ok(fake.run(STUB_SSH_PRELUDE=prelude), fake)
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == db
+    assert not (fake.app / "sespy" / "logs").exists()
+    rescued = _rescued(fake)
+    assert len(rescued) == 1
+    assert (rescued[0] / "feedback.db").read_bytes() == b"OLD-WORKER"
+    assert "WARNING" in fake.out and rescued[0].name in fake.out
+
+
+def test_old_worker_db_in_old_package_is_rescued(fake):
+    """An old worker recreates sespy/logs between the logs move and the sespy
+    rename: it lands in sespy.old, which must not be deleted with it."""
+    db = b"REAL-FEEDBACK-" * 40
+    fake.old_layout(db=db)
+    prelude = ('mv() { command mv "$@" || return; '
+               'if [ "$*" = "-T sespy_app.incoming sespy_app" ]; then '
+               'mkdir -p sespy/logs && printf OLD-WORKER-2 > sespy/logs/feedback.db; fi; }')
+    _ok(fake.run(STUB_SSH_PRELUDE=prelude), fake)
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == db
+    assert not (fake.app / "sespy.old").exists()
+    rescued = _rescued(fake)
+    assert len(rescued) == 1
+    assert (rescued[0] / "feedback.db").read_bytes() == b"OLD-WORKER-2"
+
+
+def test_repeat_deploy_keeps_app_db(fake):
+    db = b"SQLite format 3\x00" + b"APP-ROWS" * 300
+    wal = b"APP-WAL" * 20
+    fake.new_layout(db=db, wal=wal)
+    _ok(fake.run(), fake)
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == db
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db-wal").read_bytes() == wal
+    assert not (fake.app / "sespy" / "logs").exists()
+    assert _rescued(fake) == []
+
+
+def test_check_live_runs_from_library_root(fake):
+    fake.settings_on()
+    _ok(fake.run(), fake)
+    script = _native(fake.lib_posix + "/tests/parity/check_live.py")
+    checks = fake.check_calls()
+    assert len(checks) == 1 and checks[0].split()[1] == script
+    assert all(c.split()[1] == script for c in fake.calls("check_live"))
+    assert fake.calls("pythonpath") and all(
+        ln == f"pythonpath {_native(fake.lib_posix)}" for ln in fake.calls("pythonpath"))
+    assert not (fake.repo / "tests").exists(), "the app checkout carries no check_live.py"
 
 
 # ---------------------------------------------------------------------------
@@ -829,7 +1176,7 @@ SAFE_CASES = ["/srv/shiny-server/marinesabres/data", "/a_b/c.d/e@f+g-h", "/", "/
 
 
 def test_safe_dir_rule_matches_check_live(deploy_copy):
-    import check_live
+    check_live = _check_live()
     # Values go through a file: MSYS re-parses argv quotes and would strip '...'.
     cases = deploy_copy / "safe_cases.txt"
     cases.write_bytes("".join(v + "\n" for v in SAFE_CASES).encode("utf-8"))
