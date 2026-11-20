@@ -831,6 +831,8 @@ def test_failing_swap_step_aborts(fake):
     fake.new_layout(db=b"DB")
     cp = fake.run(STUB_SSH_FAIL=SWAP_LIB, STUB_SSH_FAIL_RC="1")
     assert cp.returncode != 0
+    assert len(fake.incoming_scps()) == 2, "the run reached the swap"
+    assert "the swap on" in fake.out
     assert not any("/app.py" in c for c in fake.calls("scp")), "app.py uploaded after a failed swap"
     assert not (fake.app / "restart.txt").exists()
     assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == b"DB"
