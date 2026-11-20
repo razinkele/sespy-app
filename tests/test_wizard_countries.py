@@ -19,21 +19,22 @@ from html import unescape
 from pathlib import Path
 
 import pytest
-import shiny
-from shiny import reactive
-from shiny.testserver import test_server
-
 import sespy.i18n
+import shiny
+from _paths import TRANSLATIONS
 from sespy import r_kb
 from sespy.claude_backend import _build_user_message
 from sespy.data_structure import IsaData, Project, WizardState
-from sespy.event_bus import create_event_bus
 from sespy.kb_suggestions import countries_for_sea, country_names_for
-from sespy.modules.ai_isa_wizard import _country_choices, ai_isa_wizard_server
-from sespy.ui_i18n import Translator, load_translations
+from shiny import reactive
+from shiny.testserver import test_server
+
+from sespy_app.event_bus import create_event_bus
+from sespy_app.i18n import Translator, load_translations
+from sespy_app.modules.ai_isa_wizard import _country_choices, ai_isa_wizard_server
 
 ROOT = Path(__file__).resolve().parents[1]
-TR = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+TR = Translator(translations=load_translations(TRANSLATIONS))
 GOV = r_kb.VENDORED.governance()
 EU_LABEL = TR.t("modules.isa.ai_assistant.eu_member_states")
 NON_EU_LABEL = TR.t("modules.isa.ai_assistant.non_eu_countries")

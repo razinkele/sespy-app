@@ -1,5 +1,6 @@
 """About modal shows both the app version and the library version."""
 import sespy
+
 import sespy_app
 from sespy_app.modules.topbar_actions import _about_modal
 

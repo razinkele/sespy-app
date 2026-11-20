@@ -1,6 +1,6 @@
 # SESPy User Manual
 
-**Version 1.17.1 · November 2026**
+**Version 1.0.0 · November 2026**
 
 SESPy is the Python port of the MarineSABRES Social-Ecological Systems (SES) Toolbox. It helps a facilitator and a group of stakeholders build a causal loop diagram of a marine social-ecological system, typed with the DAPSI(W)R(M) framework, and then interrogate that diagram: which feedback loops it contains, which elements carry leverage, where governance does not reach the pressures it should, how robust the structure is, and what an intervention might propagate into.
 
@@ -385,7 +385,7 @@ The Countries step lists the countries the R app lists for the chosen sea, from 
 
 **Feedback** opens a form with a message, a rating (how useful the tool is, 1–5, which helps the developers prioritise; a line under the slider says so) and a category, and lists the ten most recent entries. Entries are stored on the server.
 
-**About** has three tabs: an overview of the app, this manual, and the changelog. The overview ends with **Reference data**: one line per R data file the app reads (the knowledge base and the governance database), saying whether it is the copy shipped with SESPy ("vendored") or the R app's live file on the server ("shared"), which R release it matches, and the first characters of its hash.
+**About** has three tabs: an overview of the app (it shows the app version, "SESPy app", and the version of the sespy library it runs on), this manual, and the changelog. The overview ends with **Reference data**: one line per R data file the app reads (the knowledge base and the governance database), saying whether it is the copy shipped with SESPy ("vendored") or the R app's live file on the server ("shared"), which R release it matches, and the first characters of its hash.
 
 **Options** sets the theme, the language and autosave, shows when the last autosave happened, and can clear the autosave.
 

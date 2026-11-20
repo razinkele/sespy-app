@@ -12,16 +12,18 @@ import dataclasses
 from pathlib import Path
 
 import pytest
+import sespy.i18n
 import shiny
+from _paths import TRANSLATIONS
+from sespy import r_kb
+from sespy.data_structure import IsaData, Project
 from shiny import reactive, render
 from shiny.testserver import test_server
 
-import sespy.i18n
-import sespy.modules.project_io as pio
-from sespy import r_kb, ui_r_kb
-from sespy.data_structure import IsaData, Project
-from sespy.event_bus import create_event_bus
-from sespy.modules.project_io import quick_actions_server
+import sespy_app.modules.project_io as pio
+from sespy_app import kb_reads
+from sespy_app.event_bus import create_event_bus
+from sespy_app.modules.project_io import quick_actions_server
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "data" / "sample_ses.json"
@@ -108,7 +110,7 @@ def _make_server(h: dict, *, snapshot=SNAP, with_reads: bool = True):
         def _read():
             if not input.t_read():
                 return
-            ui_r_kb.add_reads(rr, [KB, GOV])
+            kb_reads.add_reads(rr, [KB, GOV])
 
         @reactive.effect
         @reactive.event(input.t_edit, ignore_init=True)
@@ -146,7 +148,7 @@ def _kb_toasts(shown) -> list[dict]:
 # ---------------------------------------------------------------- add_reads
 
 def test_add_reads_none_is_noop():
-    assert ui_r_kb.add_reads(None, [KB]) is None
+    assert kb_reads.add_reads(None, [KB]) is None
 
 
 def test_add_reads_no_self_invalidation():
@@ -159,8 +161,8 @@ def test_add_reads_no_self_invalidation():
         @render.text
         def out():
             h["runs"] += 1
-            ui_r_kb.add_reads(rr, [KB])
-            ui_r_kb.add_reads(rr, [KB])
+            kb_reads.add_reads(rr, [KB])
+            kb_reads.add_reads(rr, [KB])
             return "x"
 
         @reactive.effect
@@ -396,10 +398,10 @@ def _kwonly_defaults(rel: str, fn: str) -> dict:
 
 
 @pytest.mark.parametrize("rel,fn,names", [
-    ("sespy/modules/ai_isa_wizard.py", "ai_isa_wizard_server", ("snapshot", "reference_reads")),
-    ("sespy/modules/report_export.py", "report_export_server", ("snapshot", "reference_reads")),
-    ("sespy/modules/project_io.py", "quick_actions_server", ("snapshot", "reference_reads")),
-    ("sespy/modules/topbar_actions.py", "topbar_actions_server", ("snapshot",)),
+    ("sespy_app/modules/ai_isa_wizard.py", "ai_isa_wizard_server", ("snapshot", "reference_reads")),
+    ("sespy_app/modules/report_export.py", "report_export_server", ("snapshot", "reference_reads")),
+    ("sespy_app/modules/project_io.py", "quick_actions_server", ("snapshot", "reference_reads")),
+    ("sespy_app/modules/topbar_actions.py", "topbar_actions_server", ("snapshot",)),
 ])
 def test_module_servers_accept_the_new_keywords_as_optional(rel, fn, names):
     kw = _kwonly_defaults(rel, fn)
@@ -410,7 +412,7 @@ def test_module_servers_accept_the_new_keywords_as_optional(rel, fn, names):
 def test_provenance_keys_format_in_every_language():
     import json
 
-    data = json.loads((ROOT / "sespy" / "translations" / "core.json").read_text(encoding="utf-8"))
+    data = json.loads((TRANSLATIONS / "core.json").read_text(encoding="utf-8"))
     tr = data["translation"]
     for lang in data["languages"]:
         text = tr["kb.provenance_differs"][lang].format(file=KB, tag="v9.9.9")

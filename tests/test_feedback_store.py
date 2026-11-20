@@ -1,4 +1,4 @@
-from sespy import feedback_store
+from sespy_app import feedback_store
 
 
 def test_add_and_get(tmp_path):

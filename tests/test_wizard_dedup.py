@@ -1,4 +1,4 @@
-"""App tests: _dedup_accepted from sespy.modules.ai_isa_wizard."""
+"""App tests: _dedup_accepted from sespy_app.modules.ai_isa_wizard."""
 from __future__ import annotations
 
 # ===========================================================================
@@ -10,7 +10,7 @@ from sespy.data_structure import ConnectionSuggestion
 
 # Import the production helper directly — NOT a copy. Tests below
 # exercise the exact same algorithm _on_finish uses.
-from sespy.modules.ai_isa_wizard import _dedup_accepted as _dedup
+from sespy_app.modules.ai_isa_wizard import _dedup_accepted as _dedup
 
 
 def _make_sug(source, target, polarity, confidence, rationale="r"):

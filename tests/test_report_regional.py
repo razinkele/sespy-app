@@ -17,16 +17,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).parent / "parity"))
 
-from k1_fixtures import load_k1_fixture  # noqa: E402
-
 import sespy.i18n  # noqa: E402
 import sespy.report as report  # noqa: E402
+from k1_fixtures import load_k1_fixture  # noqa: E402
 from sespy import data_structure as ds  # noqa: E402
 from sespy import kb_report  # noqa: E402
-from sespy.event_bus import create_event_bus  # noqa: E402
 from sespy.kb_report import HEADINGS  # noqa: E402
-from sespy.modules import report_export as mod  # noqa: E402
 from sespy.r_kb import VENDORED  # noqa: E402
+
+from sespy_app.event_bus import create_event_bus  # noqa: E402
+from sespy_app.modules import report_export as mod  # noqa: E402
 
 REPORT = load_k1_fixture("report")
 SAMPLE = ROOT / "data" / "sample_ses.json"

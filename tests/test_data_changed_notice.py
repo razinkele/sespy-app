@@ -8,8 +8,8 @@ from pathlib import Path
 
 import shiny
 
-import sespy
-from sespy.modules import _notify
+import sespy_app
+from sespy_app.modules import _notify
 
 
 def test_notice_uses_one_shared_id(monkeypatch):
@@ -21,7 +21,7 @@ def test_notice_uses_one_shared_id(monkeypatch):
 
 
 def test_no_tab_posts_its_own_data_changed_toast():
-    root = Path(sespy.__file__).parent / "modules"
+    root = Path(sespy_app.__file__).parent / "modules"
     direct = [p.name for p in root.glob("*.py")
               if p.name != "_notify.py"
               and "data_changed_rerun" in p.read_text(encoding="utf-8")]

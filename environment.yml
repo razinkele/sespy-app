@@ -8,8 +8,9 @@
 #   micromamba activate sespy
 #   shiny run --port 8000 app.py
 #
-# For library-only / programmatic use (no Shiny UI, no graph view) a plain
-# `pip install .` is enough — see README "Install it".
+# This file installs only third-party dependencies. The app itself and the
+# `sespy` library (a pinned git tag, see pyproject.toml) come from
+# `pip install -e .[test]` run inside the activated environment.
 name: sespy
 channels:
   - razinka          # pyvis 4.x fork — provides the pyvis.shiny vis-network bridge

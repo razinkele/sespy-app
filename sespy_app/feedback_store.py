@@ -8,7 +8,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# sespy/logs/feedback.db (package-internal; logs/ is gitignored).
+# sespy_app/logs/feedback.db (package-internal; logs/ is gitignored).
 _DEFAULT_DB = Path(__file__).resolve().parent / "logs" / "feedback.db"
 
 _SCHEMA = """

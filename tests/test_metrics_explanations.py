@@ -15,20 +15,21 @@ from html import escape
 from pathlib import Path
 
 import pytest
+from _paths import TRANSLATIONS
 
 pytest.importorskip("pyvis.shiny")
 
-from shiny.testserver import test_server  # noqa: E402
-
 from sespy import i18n  # noqa: E402
 from sespy.data_structure import Project  # noqa: E402
-from sespy.event_bus import create_event_bus  # noqa: E402
-from sespy.modules.analysis_metrics import analysis_metrics_server, analysis_metrics_ui  # noqa: E402
 from sespy.network import CENTRALITY_METRICS  # noqa: E402
-from sespy.ui_i18n import Translator, load_translations  # noqa: E402
+from shiny.testserver import test_server  # noqa: E402
+
+from sespy_app.event_bus import create_event_bus  # noqa: E402
+from sespy_app.i18n import Translator, load_translations  # noqa: E402
+from sespy_app.modules.analysis_metrics import analysis_metrics_server, analysis_metrics_ui  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-TR = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+TR = Translator(translations=load_translations(TRANSLATIONS))
 LANGS = ("en", "es", "fr", "de", "lt", "pt", "it", "no", "el")
 NEW_KEYS = [f"metrics.desc_{m}" for m in CENTRALITY_METRICS] + [
     "metrics.fit_explain", "metrics.gov_gap_explain", "metrics.show_top_n_help",
@@ -97,7 +98,7 @@ def test_the_table_follows_the_slider(monkeypatch):
 
 @pytest.mark.parametrize("key", NEW_KEYS + ["metrics.show_top_n"])
 def test_explanations_cover_all_languages(key):
-    tr = load_translations(ROOT / "sespy" / "translations")
+    tr = load_translations(TRANSLATIONS)
     assert key in tr
     for lang in LANGS:
         assert tr[key].get(lang, "").strip(), (key, lang)
@@ -106,5 +107,5 @@ def test_explanations_cover_all_languages(key):
 
 
 def test_the_slider_label_names_the_table():
-    tr = load_translations(ROOT / "sespy" / "translations")
+    tr = load_translations(TRANSLATIONS)
     assert "top n" not in tr["metrics.show_top_n"]["en"].lower()

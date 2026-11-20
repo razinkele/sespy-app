@@ -1,19 +1,20 @@
 """App-layer i18n: the reactive Translator and the session resolver
-(sespy.ui_i18n). The plain library side is tested in tests/test_i18n.py."""
+(sespy_app.i18n). The plain library side is tested in tests/test_i18n.py."""
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
+import sespy.i18n
+from _paths import TRANSLATIONS
 from shiny import module
 from shiny.testserver import test_server
 
-import sespy.i18n
-import sespy.ui_i18n as u
-from sespy.ui_i18n import Translator, get_default, load_translations, set_default, t
+import sespy_app.i18n as u
+from sespy_app.i18n import Translator, get_default, load_translations, set_default, t
 
 ROOT = Path(__file__).resolve().parents[1]
-TRANSLATIONS = ROOT / "sespy" / "translations"
+TRANSLATIONS = TRANSLATIONS
 
 
 @pytest.fixture(scope="module")
@@ -109,11 +110,11 @@ def test_session_clone_is_reactive_even_for_plain_default(monkeypatch):
 
 def test_mosaicses_usage_shape(monkeypatch):
     # MosaicSES's bridge release imports these three names from the app-side module.
-    from sespy.ui_i18n import Translator as MTranslator
-    from sespy.ui_i18n import load_translations as m_load
-    from sespy.ui_i18n import set_default as m_set_default
+    from sespy_app.i18n import Translator as MTranslator
+    from sespy_app.i18n import load_translations as m_load
+    from sespy_app.i18n import set_default as m_set_default
 
-    m_set_default(MTranslator(translations=m_load(ROOT / "sespy" / "translations")))
+    m_set_default(MTranslator(translations=m_load(TRANSLATIONS)))
     seen = {}
 
     def server(input, output, session):

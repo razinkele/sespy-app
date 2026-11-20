@@ -12,12 +12,14 @@ import time
 from pathlib import Path
 
 import pytest
+from _paths import TRANSLATIONS
+from sespy import data_structure, i18n
 from shiny import reactive
 from shiny.testserver import test_server
 
-from sespy import data_structure, i18n, ui_i18n
-from sespy.event_bus import create_event_bus
-from sespy.modules import analysis_intervention as mod
+from sespy_app import i18n as app_i18n
+from sespy_app.event_bus import create_event_bus
+from sespy_app.modules import analysis_intervention as mod
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "data" / "sample_ses.json"
@@ -26,8 +28,8 @@ RUNNING = "running the intervention simulation"   # diffusion.computing, en
 
 @pytest.fixture(autouse=True)
 def english(monkeypatch):
-    monkeypatch.setattr(i18n, "_default_translator", ui_i18n.Translator(
-        translations=i18n.load_translations(ROOT / "sespy" / "translations")))
+    monkeypatch.setattr(i18n, "_default_translator", app_i18n.Translator(
+        translations=i18n.load_translations(TRANSLATIONS)))
 
 
 @pytest.fixture

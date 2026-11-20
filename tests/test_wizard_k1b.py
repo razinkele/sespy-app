@@ -9,19 +9,20 @@ from pathlib import Path
 
 import pytest
 import shiny
-from shiny import reactive
-from shiny.testserver import test_server
-
+from _paths import TRANSLATIONS
 from sespy import i18n, r_kb
 from sespy.autosave import read_autosave, write_autosave
 from sespy.data_structure import Connection, ConnectionSuggestion, Element, IsaData, Project
-from sespy.event_bus import create_event_bus
-from sespy.modules.ai_isa_wizard import _render_suggestions_table, ai_isa_wizard_server
 from sespy.persistent_storage import load_project, project_to_bytes, save_project_atomic
-from sespy.ui_i18n import Translator, load_translations
+from shiny import reactive
+from shiny.testserver import test_server
+
+from sespy_app.event_bus import create_event_bus
+from sespy_app.i18n import Translator, load_translations
+from sespy_app.modules.ai_isa_wizard import _render_suggestions_table, ai_isa_wizard_server
 
 ROOT = Path(__file__).resolve().parents[1]
-TR = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+TR = Translator(translations=load_translations(TRANSLATIONS))
 LANGS = ("en", "es", "fr", "de", "lt", "pt", "it", "no", "el")
 KB_NAMES = {"drivers": "Food security", "activities": "Commercial fishing",
             "pressures": "Overfishing", "states": "Fish stock decline",
@@ -203,7 +204,7 @@ def test_accepted_strength_confidence_round_trip(tmp_path, monkeypatch):
                                  "wizard.col_score", "wizard.no_suggestions",
                                  "wizard.confidence_help_rules"])
 def test_keys_cover_all_languages(key):
-    tr = load_translations(ROOT / "sespy" / "translations")
+    tr = load_translations(TRANSLATIONS)
     for lang in LANGS:
         assert tr[key].get(lang, "").strip(), (key, lang)
 

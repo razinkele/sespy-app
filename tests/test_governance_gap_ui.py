@@ -9,8 +9,8 @@ from pathlib import Path
 
 from sespy import network
 from sespy.data_structure import Connection, Element, IsaData, load_sample
-from sespy.modules.analysis_metrics import (
-    governance_concentration_verdict, governance_gap_state)
+
+from sespy_app.modules.analysis_metrics import governance_concentration_verdict, governance_gap_state
 
 
 def _state(isa):

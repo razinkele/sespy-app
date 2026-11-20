@@ -1,4 +1,4 @@
-"""App test: parse_upload dispatch in sespy.modules.import_data."""
+"""App test: parse_upload dispatch in sespy_app.modules.import_data."""
 from __future__ import annotations
 
 import json
@@ -6,7 +6,7 @@ import json
 
 def test_parse_upload_dispatches_by_extension(tmp_path):
     # The dispatch keys off the ORIGINAL filename, not the temp datapath.
-    from sespy.modules.import_data import parse_upload
+    from sespy_app.modules.import_data import parse_upload
 
     data = {"canvas": {"nodes": [{"id": "a", "label": "A"}], "links": []}}
     f = tmp_path / "model.qsem"

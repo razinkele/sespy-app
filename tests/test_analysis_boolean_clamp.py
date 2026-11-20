@@ -6,13 +6,13 @@ import json
 from pathlib import Path
 
 import pytest
+from sespy import dynamics
+from sespy.data_structure import Project
 from shiny import reactive
 from shiny.testserver import test_server
 
-from sespy import dynamics
-from sespy.data_structure import Project
-from sespy.event_bus import create_event_bus
-from sespy.modules.analysis_boolean import analysis_boolean_server
+from sespy_app.event_bus import create_event_bus
+from sespy_app.modules.analysis_boolean import analysis_boolean_server
 
 SAMPLE = Path(__file__).resolve().parents[1] / "data" / "sample_ses.json"
 

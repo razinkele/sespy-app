@@ -3,7 +3,7 @@ valid project JSON (17-element sample envelope) to the browser.
 
 Coverage limit: Load and New are asserted only to EXIST — this script never
 uploads a file to `#load_project` and never clicks `#new_project`, so a broken
-or unwired `_on_upload` / `_on_new` (sespy/modules/project_io.py) would NOT
+or unwired `_on_upload` / `_on_new` (sespy_app/modules/project_io.py) would NOT
 fail here.
 """
 import asyncio

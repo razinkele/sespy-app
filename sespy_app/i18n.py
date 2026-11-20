@@ -19,7 +19,7 @@ translator app.py configured, not a fresh clone at the process default.
 
 App code imports everything i18n from here; the re-exported names are the
 library's own objects. Monkeypatching `sespy.i18n._default_translator` changes
-what `t()` and `sespy.i18n.get_default()` return, and `ui_i18n.get_default` is
+what `t()` and `sespy.i18n.get_default()` return, and `i18n.get_default` is
 that same function: outside a session its callers see the patched translator;
 inside a session they see the root session's clone, which is built from the
 default the first time it is needed and is not rebuilt after a later patch.

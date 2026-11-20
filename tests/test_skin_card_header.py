@@ -9,9 +9,9 @@ the load order."""
 import re
 from pathlib import Path
 
-import sespy
+import sespy_app
 
-SKIN = Path(sespy.__file__).parent / "www" / "sespy-skin.css"
+SKIN = Path(sespy_app.__file__).parent / "www" / "sespy-skin.css"
 
 
 def test_card_header_sets_bootstrap_cap_color():

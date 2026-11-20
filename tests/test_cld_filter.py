@@ -13,7 +13,8 @@ pytest.importorskip("pyvis.shiny")
 
 from sespy.constants import DAPSIWRM_ELEMENTS
 from sespy.data_structure import Element, IsaData
-from sespy.modules.cld_visualization import cld_keep_types
+
+from sespy_app.modules.cld_visualization import cld_keep_types
 
 
 def _isa(*types: str) -> IsaData:

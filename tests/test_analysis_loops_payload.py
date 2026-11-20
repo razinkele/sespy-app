@@ -1,10 +1,9 @@
-"""App test: build_loop_payload (pyvis-backed) from sespy.modules.analysis_loops."""
+"""App test: build_loop_payload (pyvis-backed) from sespy_app.modules.analysis_loops."""
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-
 from sespy import network
 from sespy.data_structure import load_sample
 
@@ -21,7 +20,8 @@ def test_pyvis_loop_payload_shape():
     # rather than fail a fork-independent environment (e.g. CI on PyPI deps).
     pytest.importorskip("pyvis.shiny")
     from sespy.constants import EDGE_COLORS, ELEMENT_COLORS, ELEMENT_SHAPES
-    from sespy.modules.analysis_loops import build_loop_payload
+
+    from sespy_app.modules.analysis_loops import build_loop_payload
 
     isa = load_sample(SAMPLE)
     cycles = network.feedback_loops(isa)

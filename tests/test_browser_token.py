@@ -1,7 +1,7 @@
 """Unit tests for the per-browser token plumbing (sespy/browser_token.py)."""
 from __future__ import annotations
 
-from sespy import browser_token as bt
+from sespy_app import browser_token as bt
 
 TOKEN = "0f8c2a4e-1b7d-4c3e-9a55-6d2e8f1a0b3c"
 

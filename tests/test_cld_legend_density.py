@@ -15,21 +15,22 @@ from html import escape
 from pathlib import Path
 
 import pytest
+from _paths import TRANSLATIONS
 
 pytest.importorskip("pyvis.shiny")
-
-from shiny import reactive  # noqa: E402
-from shiny.testserver import test_server  # noqa: E402
 
 from sespy import i18n  # noqa: E402
 from sespy.constants import DAPSIWRM_ELEMENTS, EDGE_COLORS, ELEMENT_COLORS  # noqa: E402
 from sespy.data_structure import Project  # noqa: E402
-from sespy.event_bus import create_event_bus  # noqa: E402
-from sespy.modules.cld_visualization import cld_viz_server, cld_viz_ui  # noqa: E402
-from sespy.ui_i18n import Translator, load_translations  # noqa: E402
+from shiny import reactive  # noqa: E402
+from shiny.testserver import test_server  # noqa: E402
+
+from sespy_app.event_bus import create_event_bus  # noqa: E402
+from sespy_app.i18n import Translator, load_translations  # noqa: E402
+from sespy_app.modules.cld_visualization import cld_viz_server, cld_viz_ui  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-TR = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+TR = Translator(translations=load_translations(TRANSLATIONS))
 LANGS = ("en", "es", "fr", "de", "lt", "pt", "it", "no", "el")
 KEYS = ["cld.legend", "cld.legend_reinforcing", "cld.legend_opposing",
         "cld.stat_nodes", "cld.stat_edges", "cld.stat_density", "cld.density_help"]
@@ -83,7 +84,7 @@ def test_canvas_nodes_carry_the_colours_the_legend_shows():
     node also has `group`, so vis.js painted each type from its default group
     palette (pink Ecosystem Services, purple Goods & Benefits ...) and the
     canvas never matched the R app's Kumu colours."""
-    from sespy.modules.cld_visualization import _build_pyvis_network
+    from sespy_app.modules.cld_visualization import _build_pyvis_network
     net = _build_pyvis_network(_sample().isa_data, layout_kind="hierarchical",
                                direction="DU", level_sep=90, node_sp=200,
                                size_scale=1.0, font_scale=1.0)
@@ -118,7 +119,7 @@ def test_density_has_an_info_dot_with_the_explanation(monkeypatch):
 
 @pytest.mark.parametrize("key", KEYS)
 def test_keys_cover_all_languages(key):
-    tr = load_translations(ROOT / "sespy" / "translations")
+    tr = load_translations(TRANSLATIONS)
     assert key in tr
     for lang in LANGS:
         assert tr[key].get(lang, "").strip(), (key, lang)

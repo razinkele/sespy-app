@@ -17,18 +17,19 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import shiny
+from _paths import TRANSLATIONS
+from sespy import i18n
+from sespy.data_structure import Project, ResponseRegister, Stakeholder
+from sespy.response_register import TENET_CODES, add_impact, add_measure, add_milestone
 from shiny import reactive
 from shiny.testserver import test_server
 
-from sespy import i18n
-from sespy.data_structure import Project, ResponseRegister, Stakeholder
-from sespy.event_bus import create_event_bus
-from sespy.modules.response_register import EchoGuard, response_register_server
-from sespy.response_register import TENET_CODES, add_impact, add_measure, add_milestone
-from sespy.ui_i18n import Translator, load_translations
+from sespy_app.event_bus import create_event_bus
+from sespy_app.i18n import Translator, load_translations
+from sespy_app.modules.response_register import EchoGuard, response_register_server
 
 ROOT = Path(__file__).resolve().parents[1]
-TR = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+TR = Translator(translations=load_translations(TRANSLATIONS))
 RM = "modules.response.measures."
 
 FORM = {"rm_name": "", "rm_type": "", "rm_target": "", "rm_status": "proposed",

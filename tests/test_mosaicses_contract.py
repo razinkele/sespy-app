@@ -27,13 +27,14 @@ import sys
 from pathlib import Path
 
 import pytest
+from _paths import TRANSLATIONS
+from sespy.data_structure import IsaData, Project, ProjectMetadata
+from sespy.i18n import Translator, load_translations
+from sespy.regional_seas import get_regional_seas
 from shiny import reactive
 from shiny.testserver import test_server
 
-from sespy.data_structure import IsaData, Project, ProjectMetadata
-from sespy.event_bus import create_event_bus
-from sespy.i18n import Translator, load_translations
-from sespy.regional_seas import get_regional_seas
+from sespy_app.event_bus import create_event_bus
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,7 +52,7 @@ _SERVER_UI = [
     ("analysis_simulation", "analysis_simulation"),
 ]
 # From 1.17.1 `sespy.i18n.Translator` is the plain, non-reactive one; MosaicSES
-# needs its bridge release (reactive translator from `sespy.ui_i18n`) live
+# needs its bridge release (reactive translator from `sespy_app.i18n`) live
 # before 1.17.1 is deployed.
 MOSAIC_IMPORTS: set[tuple[str, str]] = {
     ("sespy.autosave", "token_key"),
@@ -61,15 +62,15 @@ MOSAIC_IMPORTS: set[tuple[str, str]] = {
     ("sespy.constants", "SPATIAL_SCALES"),
     ("sespy.constants", "TEMPORAL_SCALES"),
     ("sespy.constants", "ELEMENT_ID_PREFIX"),
-    ("sespy.dashboard", "NavItem"),
-    ("sespy.dashboard", "StepperItem"),
+    ("sespy_app.dashboard", "NavItem"),
+    ("sespy_app.dashboard", "StepperItem"),
     ("sespy.data_structure", "Connection"),
     ("sespy.data_structure", "Element"),
     ("sespy.data_structure", "IsaData"),
     ("sespy.data_structure", "Project"),
     ("sespy.data_structure", "ProjectMetadata"),
-    ("sespy.event_bus", "EventBus"),
-    ("sespy.event_bus", "create_event_bus"),
+    ("sespy_app.event_bus", "EventBus"),
+    ("sespy_app.event_bus", "create_event_bus"),
     ("sespy.i18n", "Translator"),
     ("sespy.utils", "next_id"),
     ("sespy.network", "remove_nodes"),
@@ -77,12 +78,12 @@ MOSAIC_IMPORTS: set[tuple[str, str]] = {
     ("sespy.network", "centrality_metrics"),
     ("sespy.network", "leverage_scores"),
     ("sespy.network", "to_digraph"),
-    ("sespy.modules.cld_visualization", "cld_viz_server"),
-    ("sespy.modules.cld_visualization", "cld_viz_ui"),
-    ("sespy.modules.isa_data_entry", "isa_data_entry_server"),
-    ("sespy.modules.isa_data_entry", "isa_data_entry_ui"),
+    ("sespy_app.modules.cld_visualization", "cld_viz_server"),
+    ("sespy_app.modules.cld_visualization", "cld_viz_ui"),
+    ("sespy_app.modules.isa_data_entry", "isa_data_entry_server"),
+    ("sespy_app.modules.isa_data_entry", "isa_data_entry_ui"),
     *(
-        (f"sespy.modules.{m}", f"{p}_{kind}")
+        (f"sespy_app.modules.{m}", f"{p}_{kind}")
         for m, p in _SERVER_UI
         for kind in ("server", "ui")
     ),
@@ -110,6 +111,24 @@ def _mosaic_checkout() -> Path | None:
     return None
 
 
+# MosaicSES still imports the monolith's UI names; since the split they live in
+# `sespy_app`, so map them before comparing with MOSAIC_IMPORTS.
+_MOVED = {
+    "ui_i18n": "sespy_app.i18n",
+    "ui_r_kb": "sespy_app.kb_reads",
+}
+_MOVED_PREFIXES = ("modules", "dashboard", "event_bus", "browser_token", "feedback_store")
+
+
+def _retarget(module: str) -> str:
+    parts = module.split(".")
+    if len(parts) == 2 and parts[0] == "sespy" and parts[1] in _MOVED:
+        return _MOVED[parts[1]]
+    if len(parts) > 1 and parts[0] == "sespy" and parts[1] in _MOVED_PREFIXES:
+        return "sespy_app." + ".".join(parts[1:])
+    return module
+
+
 def _derive_imports(checkout: Path) -> tuple[set[tuple[str, str]], list[Path]]:
     found: set[tuple[str, str]] = set()
     files: list[Path] = []
@@ -120,7 +139,7 @@ def _derive_imports(checkout: Path) -> tuple[set[tuple[str, str]], list[Path]]:
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.level == 0 \
                         and (node.module or "").split(".")[0] == "sespy":
-                    found.update((node.module, a.name) for a in node.names)
+                    found.update((_retarget(node.module), a.name) for a in node.names)
     return found, files
 
 
@@ -135,7 +154,7 @@ def tr():
     saved = i18n._default_translator
     saved_lang = getattr(saved, "_lang", None)
     try:
-        yield Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+        yield Translator(translations=load_translations(TRANSLATIONS))
     finally:
         i18n._default_translator = saved
         if saved is not None and saved_lang is not None:
@@ -161,8 +180,8 @@ _PROBE_OUTPUT = {
 def test_isa_data_entry_mosaic_call(use_translator, tr):
     """compartments.py: isa_data_entry_server("entry", project_data=...,
     event_bus=..., translator=translator) and cld_viz_server("cld", ...)."""
-    from sespy.modules.cld_visualization import cld_viz_server
-    from sespy.modules.isa_data_entry import isa_data_entry_server
+    from sespy_app.modules.cld_visualization import cld_viz_server
+    from sespy_app.modules.isa_data_entry import isa_data_entry_server
 
     translator = tr if use_translator else None
 
@@ -193,7 +212,7 @@ def test_all_embedded_modules_mount_in_mosaic_form(tr):
         rv = reactive.value(Project(ProjectMetadata(name="mosaic"), IsaData()))
         bus = create_event_bus()
         for modname, prefix in _SERVER_UI:
-            fn = getattr(importlib.import_module(f"sespy.modules.{modname}"),
+            fn = getattr(importlib.import_module(f"sespy_app.modules.{modname}"),
                          f"{prefix}_server")
             kw = {"project_data": rv, "event_bus": bus}
             if modname != "analysis_loops":
@@ -210,14 +229,14 @@ def test_all_embedded_modules_mount_in_mosaic_form(tr):
 
 
 def test_module_ui_calls_take_an_id():
-    from sespy.modules.cld_visualization import cld_viz_ui
-    from sespy.modules.isa_data_entry import isa_data_entry_ui
+    from sespy_app.modules.cld_visualization import cld_viz_ui
+    from sespy_app.modules.isa_data_entry import isa_data_entry_ui
 
     assert str(isa_data_entry_ui("entry"))
     assert str(cld_viz_ui("cld"))
     import importlib
     for modname, prefix in _SERVER_UI:
-        fn = getattr(importlib.import_module(f"sespy.modules.{modname}"), f"{prefix}_ui")
+        fn = getattr(importlib.import_module(f"sespy_app.modules.{modname}"), f"{prefix}_ui")
         assert str(fn(prefix.removeprefix("analysis_")))
 
 
@@ -276,8 +295,11 @@ def test_mosaic_does_not_mount_the_ai_isa_wizard():
 
 
 # ------------------------------------------------------------------- r_kb
-def test_r_kb_imports_from_repo_under_test(tmp_path):
-    env = {**os.environ, "PYTHONPATH": str(ROOT)}
+def test_r_kb_imports_from_library_under_test(tmp_path):
+    import sespy
+
+    lib_root = Path(sespy.__file__).resolve().parent.parent
+    env = {**os.environ, "PYTHONPATH": str(lib_root)}
     out = subprocess.run(
         [sys.executable, "-c",
          "import sespy, sespy.r_kb; print(sespy.__file__)"],
@@ -285,4 +307,5 @@ def test_r_kb_imports_from_repo_under_test(tmp_path):
     )
     assert out.returncode == 0, out.stderr
     printed = Path(out.stdout.strip().splitlines()[-1]).resolve()
-    assert ROOT.resolve() in printed.parents, printed
+    assert lib_root in printed.parents, printed
+    assert printed == Path(sespy.__file__).resolve()

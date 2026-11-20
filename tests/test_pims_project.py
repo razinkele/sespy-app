@@ -5,12 +5,12 @@ would drop origin, r_template_version and min_sespy_version on every save.
 """
 from __future__ import annotations
 
+from sespy.data_structure import IsaData, Project, ProjectMetadata
 from shiny import reactive
 from shiny.testserver import test_server
 
-from sespy.data_structure import IsaData, Project, ProjectMetadata
-from sespy.event_bus import create_event_bus
-from sespy.modules.pims_project import pims_project_server
+from sespy_app.event_bus import create_event_bus
+from sespy_app.modules.pims_project import pims_project_server
 
 FORM = dict(project_name="Renamed", da_site="", focal_issue="Eutrophication",
             definition_statement="", temporal_scale="Yearly",

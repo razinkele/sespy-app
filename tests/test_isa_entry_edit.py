@@ -15,18 +15,19 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import shiny
+from _paths import TRANSLATIONS
+from sespy import i18n
+from sespy.data_structure import IsaData, Project, ResponseRegister
+from sespy.response_register import add_measure
 from shiny import reactive
 from shiny.testserver import test_server
 
-from sespy import i18n
-from sespy.data_structure import IsaData, Project, ResponseRegister
-from sespy.event_bus import create_event_bus
-from sespy.modules.isa_data_entry import isa_data_entry_server
-from sespy.response_register import add_measure
-from sespy.ui_i18n import Translator, load_translations
+from sespy_app.event_bus import create_event_bus
+from sespy_app.i18n import Translator, load_translations
+from sespy_app.modules.isa_data_entry import isa_data_entry_server
 
 ROOT = Path(__file__).resolve().parents[1]
-TR = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+TR = Translator(translations=load_translations(TRANSLATIONS))
 N_ELEMENTS = 17          # data/sample_ses.json
 MPF1, P001, R001 = 8, 5, 15
 D001_A001 = 0            # connection row

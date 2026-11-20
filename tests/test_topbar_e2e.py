@@ -32,7 +32,7 @@ async def main():
             print("topbar feedback: OK")
         else:
             # Run directly against a hand-started server, a submit lands in the
-            # real store (sespy/logs/feedback.db): row 26 there, 2026-10-16, came
+            # real store (sespy_app/logs/feedback.db): row 26 there, 2026-10-16, came
             # from exactly that after run_e2e.py's own guards were in place.
             # run_e2e.py sets SESPY_FEEDBACK_DB for server and client alike, so
             # the gate always submits; a bare run only checks the modal opens.

@@ -2,7 +2,8 @@
 and the URL stays in sync on nav + stepper navigation."""
 import asyncio
 
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright
 
 BASE = "http://127.0.0.1:8000"
 

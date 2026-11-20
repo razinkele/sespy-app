@@ -21,7 +21,7 @@ async def main():
         # ---- Deterministic simulation ----
         # trajectory_plot always emits an <img>: a "Click Run simulation"
         # placeholder while sim_store is None, and a red error figure on the
-        # _run_sim except branch (sespy/modules/analysis_simulation.py:209-220).
+        # _run_sim except branch (sespy_app/modules/analysis_simulation.py:209-220).
         # So a bare img-presence wait is also satisfied by a swallowed click.
         # The run is not unchecked -- dominance_summary returns an empty span
         # unless sim_store holds a successful run (analysis_simulation.py:252),
@@ -135,7 +135,7 @@ async def main():
         # state_shift_monte_carlo drops every diverged run and still fills
         # summary[i] with NaN for EVERY node (sespy/dynamics.py:522-527), while
         # mc_summary formats the full 17-row table and the completion line
-        # regardless (sespy/modules/analysis_simulation.py:314-336). A NaN cell
+        # regardless (sespy_app/modules/analysis_simulation.py:314-336). A NaN cell
         # appears only when zero runs survived, so this is the discriminating
         # check; completed_txt is carried only to name the counts on failure.
         nan_cells = await page.evaluate(

@@ -5,8 +5,8 @@ feedback_store.list_entries), so no database is needed here.
 """
 import sqlite3
 
-from sespy.modules import topbar_actions
-from sespy.modules.topbar_actions import _feedback_table, _fmt_ts, _safe_recent_entries, _truncate
+from sespy_app.modules import topbar_actions
+from sespy_app.modules.topbar_actions import _feedback_table, _fmt_ts, _safe_recent_entries, _truncate
 
 
 def test_fmt_ts_iso_to_minute():

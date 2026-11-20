@@ -13,17 +13,18 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import shiny
+from _paths import TRANSLATIONS
+from sespy import i18n
+from sespy.data_structure import IsaData, Project, ProjectMetadata, Stakeholder
 from shiny import reactive
 from shiny.testserver import test_server
 
-from sespy import i18n
-from sespy.data_structure import IsaData, Project, ProjectMetadata, Stakeholder
-from sespy.event_bus import create_event_bus
-from sespy.modules.pims_stakeholders import pims_stakeholders_server
-from sespy.ui_i18n import Translator, load_translations
+from sespy_app.event_bus import create_event_bus
+from sespy_app.i18n import Translator, load_translations
+from sespy_app.modules.pims_stakeholders import pims_stakeholders_server
 
 ROOT = Path(__file__).resolve().parents[1]
-TR = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+TR = Translator(translations=load_translations(TRANSLATIONS))
 
 FORM = {"sh_name": "", "sh_type": "", "sh_sector": "", "sh_contact": "", "sh_interests": "",
         "sh_role": "", "sh_power": "", "sh_interest": "", "sh_attitude": "",

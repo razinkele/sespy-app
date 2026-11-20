@@ -2,10 +2,10 @@
 import dataclasses
 
 import pytest
-
 import sespy.i18n
 from sespy import r_kb
-from sespy.modules.topbar_actions import _about_modal
+
+from sespy_app.modules.topbar_actions import _about_modal
 
 
 @pytest.fixture(autouse=True)

@@ -3,10 +3,11 @@
 Source-text assertions pin the FEATURE, not just call names — the lesson
 from #23, where grep-for-the-function tests passed with the column absent.
 """
+from _paths import TRANSLATIONS
 
 
 def test_metrics_module_wires_hypermodules():
-    from sespy.modules import analysis_metrics
+    from sespy_app.modules import analysis_metrics
 
     text = open(analysis_metrics.__file__, encoding="utf-8").read()
     assert "net_analysis.hypermodules(" in text, "must call the library fn"
@@ -19,11 +20,9 @@ def test_metrics_module_wires_hypermodules():
 
 def test_hypermodules_translation_keys_resolve():
     """Through the PRODUCTION loader, per the repo convention."""
-    from pathlib import Path
     from sespy.i18n import load_translations
 
-    tr = load_translations(
-        Path(__file__).resolve().parents[1] / "sespy" / "translations")
+    tr = load_translations(TRANSLATIONS)
     langs = {"en", "es", "fr", "de", "lt", "pt", "it", "no", "el"}
     for key in ("metrics.hypermodules", "metrics.hypermodules_run",
                 "metrics.hypermodules_hint", "metrics.hypermodules_score",

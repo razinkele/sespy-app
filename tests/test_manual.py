@@ -12,6 +12,7 @@ import re
 from pathlib import Path
 
 import pytest
+import sespy
 
 ROOT = Path(__file__).resolve().parents[1]
 MANUAL = ROOT / "docs" / "MANUAL.md"
@@ -27,7 +28,7 @@ def test_manual_exists_and_is_substantial(manual):
 
 
 def test_manual_version_line_matches_package(manual):
-    from sespy import __version__
+    from sespy_app import __version__
     assert f"**Version {__version__}" in manual
 
 
@@ -74,7 +75,7 @@ def test_section_references_resolve(manual):
 def test_every_docstring_doi_is_in_the_references(manual):
     dois = set()
     for name in ("network.py", "dynamics.py"):
-        src = (ROOT / "sespy" / name).read_text(encoding="utf-8")
+        src = (Path(sespy.__file__).parent / name).read_text(encoding="utf-8")
         dois.update(re.findall(r"doi:\s*([0-9.]+/[^\s)\]]+)", src))
     assert dois, "no DOIs found in docstrings"
     refs = manual.split("# Part IV")[1]
@@ -83,8 +84,8 @@ def test_every_docstring_doi_is_in_the_references(manual):
 
 
 def test_about_static_mount_serves_manual_screenshots():
-    from app import app  # noqa: F401  (import builds the App)
     import app as app_module
+    from app import app  # noqa: F401  (import builds the App)
     mounts = app_module.STATIC_ASSETS
     assert Path(mounts["/docs/screenshots"]) == ROOT / "docs" / "screenshots"
     assert Path(mounts["/"]) == ROOT / "www"

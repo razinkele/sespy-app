@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from sespy.modules.topbar_actions import manual_section
+from sespy_app.modules.topbar_actions import manual_section
 
 ROOT = Path(__file__).resolve().parents[1]
 MANUAL = (ROOT / "docs" / "MANUAL.md").read_text(encoding="utf-8")

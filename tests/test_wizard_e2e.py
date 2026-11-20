@@ -224,7 +224,7 @@ async def case_modal_cancel(page):
     await page.wait_for_timeout(800)
     # Modal Cancel.
     await page.click("#wizard-wizard_cancel_modal")
-    # `_on_modal_cancel` (sespy/modules/ai_isa_wizard.py:477-481) does nothing
+    # `_on_modal_cancel` (sespy_app/modules/ai_isa_wizard.py:477-481) does nothing
     # but `ui.modal_remove()` -- wizard_active stays False by construction
     # (`_on_start`'s non-empty branch, :430-449, only calls `ui.modal_show`),
     # so the Start-button check below is TRUE before this click as well and

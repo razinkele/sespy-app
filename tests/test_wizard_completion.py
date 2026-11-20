@@ -17,17 +17,18 @@ from pathlib import Path
 
 import pytest
 import shiny
+from _paths import TRANSLATIONS
+from sespy import i18n
+from sespy.data_structure import IsaData, Project
 from shiny import reactive
 from shiny.testserver import test_server
 
-from sespy import i18n
-from sespy.data_structure import IsaData, Project
-from sespy.event_bus import create_event_bus
-from sespy.modules.ai_isa_wizard import ai_isa_wizard_server
-from sespy.ui_i18n import Translator, load_translations
+from sespy_app.event_bus import create_event_bus
+from sespy_app.i18n import Translator, load_translations
+from sespy_app.modules.ai_isa_wizard import ai_isa_wizard_server
 
 ROOT = Path(__file__).resolve().parents[1]
-TR = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+TR = Translator(translations=load_translations(TRANSLATIONS))
 LANGS = ("en", "es", "fr", "de", "lt", "pt", "it", "no", "el")
 FREEFORM = ["drivers", "activities", "pressures", "states", "impacts", "welfare", "responses"]
 
@@ -144,7 +145,7 @@ def test_a_fresh_session_still_shows_the_start_screen(monkeypatch):
 
 
 def test_the_destructive_label_no_longer_says_continue():
-    tr = load_translations(ROOT / "sespy" / "translations")
+    tr = load_translations(TRANSLATIONS)
     for lang in LANGS:
         assert "continue" not in tr["wizard.replace"][lang].lower()
 
@@ -153,7 +154,7 @@ def test_the_destructive_label_no_longer_says_continue():
                                  "wizard.start_over", "wizard.replace",
                                  "wizard.modal_title", "wizard.modal_body"])
 def test_completion_and_start_over_keys_cover_all_languages(key):
-    tr = load_translations(ROOT / "sespy" / "translations")
+    tr = load_translations(TRANSLATIONS)
     assert key in tr
     assert set(LANGS) <= set(tr[key])
     english = tr[key]["en"]

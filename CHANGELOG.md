@@ -1,8 +1,14 @@
 # Changelog
 
-All notable changes to SESPy.
+All notable changes to the SESPy app.
+
+From 1.0.0 this is the sespy-app changelog; earlier entries are SESPy's (the app was split out of razinkele/SESPy at v1.17.1).
 
 ## [Unreleased]
+
+## [1.0.0] — 2026-11-20
+
+The app moved out of the SESPy repository into its own (`sespy_app` package, `app.py`, tests, deploy script, manual). It depends on the `sespy` library v1.18.0 for the analysis code, data structures, translations and reference data. About shows both versions: the app and the library. No user-visible behaviour change.
 
 ## [1.17.1] — 2026-11-19
 

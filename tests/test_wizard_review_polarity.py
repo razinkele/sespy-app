@@ -18,23 +18,24 @@ from pathlib import Path
 
 import pytest
 import shiny
+from _paths import TRANSLATIONS
+from sespy import i18n
+from sespy.data_structure import ConnectionSuggestion, IsaData, Project
 from shiny import reactive
 from shiny.testserver import test_server
 
-from sespy import i18n
-from sespy.data_structure import ConnectionSuggestion, IsaData, Project
-from sespy.event_bus import create_event_bus
-from sespy.modules.ai_isa_wizard import (
+from sespy_app.event_bus import create_event_bus
+from sespy_app.i18n import Translator, load_translations
+from sespy_app.modules.ai_isa_wizard import (
     _ClaudeIdle,
     _render_connection_review,
     ai_isa_wizard_server,
     ai_isa_wizard_ui,
 )
-from sespy.modules.topbar_actions import _feedback_modal
-from sespy.ui_i18n import Translator, load_translations
+from sespy_app.modules.topbar_actions import _feedback_modal
 
 ROOT = Path(__file__).resolve().parents[1]
-TR = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+TR = Translator(translations=load_translations(TRANSLATIONS))
 LANGS = ("en", "es", "fr", "de", "lt", "pt", "it", "no", "el")
 # Names with R knowledge-base matches, so R's scorer yields suggestions.
 NAMES = {"drivers": "Food security", "activities": "Commercial fishing",
@@ -150,7 +151,7 @@ def test_feedback_dialog_says_what_the_rating_is_for():
 @pytest.mark.parametrize("key", ["wizard.verb_positive", "wizard.verb_negative",
                                  "wizard.reverse", "feedback.rating_help"])
 def test_new_keys_cover_all_languages(key):
-    tr = load_translations(ROOT / "sespy" / "translations")
+    tr = load_translations(TRANSLATIONS)
     for lang in LANGS:
         assert tr[key].get(lang, "").strip(), (key, lang)
     assert sum(tr[key][lang] != tr[key]["en"] for lang in LANGS[1:]) >= 7, key

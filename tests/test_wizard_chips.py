@@ -15,21 +15,22 @@ from html import unescape
 from pathlib import Path
 
 import pytest
+import sespy.i18n
 import shiny
+from _paths import TRANSLATIONS
+from sespy import r_kb
+from sespy.data_structure import IsaData, Project
+from sespy.kb_suggestions import get_context_suggestions
 from shiny import reactive
 from shiny.testserver import test_server
 
-import sespy.i18n
-import sespy.modules.ai_isa_wizard as wiz_mod
-from sespy import r_kb
-from sespy.data_structure import IsaData, Project
-from sespy.event_bus import create_event_bus
-from sespy.kb_suggestions import get_context_suggestions
-from sespy.modules.ai_isa_wizard import _chips_caption, ai_isa_wizard_server
-from sespy.ui_i18n import Translator, load_translations
+import sespy_app.modules.ai_isa_wizard as wiz_mod
+from sespy_app.event_bus import create_event_bus
+from sespy_app.i18n import Translator, load_translations
+from sespy_app.modules.ai_isa_wizard import _chips_caption, ai_isa_wizard_server
 
 ROOT = Path(__file__).resolve().parents[1]
-TR = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+TR = Translator(translations=load_translations(TRANSLATIONS))
 FREEFORM = ["drivers", "activities", "pressures", "states", "impacts", "welfare", "responses"]
 SEA, ECO, CODES = "baltic", "Coastal lagoon", ["LT", "PL"]
 KB, GOV = r_kb.VENDORED.kb(), r_kb.VENDORED.governance()

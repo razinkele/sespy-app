@@ -10,19 +10,20 @@ from pathlib import Path
 
 import pytest
 import shiny
-from shiny import reactive
-from shiny.testserver import test_server
-
-import sespy.modules.templates as mod
+from _paths import TRANSLATIONS
 from sespy import i18n
 from sespy import templates as tpl
 from sespy.data_structure import IsaData, Project, ProjectMetadata
-from sespy.event_bus import create_event_bus
 from sespy.templates import TemplateInfo, list_catalogue
-from sespy.ui_i18n import Translator, load_translations
+from shiny import reactive
+from shiny.testserver import test_server
+
+import sespy_app.modules.templates as mod
+from sespy_app.event_bus import create_event_bus
+from sespy_app.i18n import Translator, load_translations
 
 ROOT = Path(__file__).resolve().parents[1]
-TR = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+TR = Translator(translations=load_translations(TRANSLATIONS))
 CARIBBEAN = "Caribbean Island - Comprehensive SES Template (MarineSABRES)"
 
 
@@ -131,7 +132,7 @@ def test_empty_catalogue_renders_no_marinesabres_header(panel, monkeypatch):
 
 def _core(key: str, lang: str) -> str:
     # core.json nests its entries under a wrapper object.
-    data = json.loads((ROOT / "sespy" / "translations" / "core.json")
+    data = json.loads((TRANSLATIONS / "core.json")
                       .read_text(encoding="utf-8"))
     flat = next(v for v in data.values() if isinstance(v, dict) and key in v)
     return flat[key][lang]
@@ -142,7 +143,7 @@ def test_labels_follow_the_session_translator_not_the_process_default(monkeypatc
     clone at the process default ("en"); the gallery must use the translator
     app.py hands in, and re-render when its language changes."""
     monkeypatch.setattr(i18n, "_default_translator", TR)       # process default: en
-    session_tr = Translator(translations=load_translations(ROOT / "sespy" / "translations"))
+    session_tr = Translator(translations=load_translations(TRANSLATIONS))
     session_tr.set_language("de")
     monkeypatch.setattr(shiny.ui, "notification_show", lambda *a, **k: None)
 

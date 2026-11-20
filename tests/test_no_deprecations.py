@@ -46,8 +46,9 @@ import sys
 from pathlib import Path
 
 import pytest
-
 import sespy
+
+import sespy_app
 
 _DEPRECATED_CALL_RE = re.compile(r"\brender\.download\(")
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -55,13 +56,15 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _module_names() -> list[str]:
     names = []
-    for info in pkgutil.walk_packages(sespy.__path__, prefix="sespy."):
-        names.append(info.name)
+    for pkg in (sespy, sespy_app):
+        for info in pkgutil.walk_packages(pkg.__path__, prefix=pkg.__name__ + "."):
+            names.append(info.name)
     return sorted(names)
 
 
 def _module_files() -> list[Path]:
-    root = Path(sespy.__file__).parent
+    # The app layer is what this repo owns; the library has its own guard.
+    root = Path(sespy_app.__file__).parent
     files = list(root.rglob("*.py"))
     app_py = _REPO_ROOT / "app.py"
     if app_py.exists():
@@ -137,7 +140,7 @@ def test_module_source_has_no_deprecated_render_download_call(path):
 def test_no_runtime_update_navs_calls():
     """`ui.update_navs` is deprecated (Shiny >= 1.0: `ui.update_navset`) but
     only warns when called, so the import check above cannot see it."""
-    root = Path(sespy.__file__).parent
+    root = Path(sespy_app.__file__).parent
     hits = [f"{p.relative_to(root)}:{i}"
             for p in root.rglob("*.py")
             for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)

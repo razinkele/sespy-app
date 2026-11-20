@@ -1,4 +1,9 @@
-# SESPy — agent notes
+# SESPy app — agent notes
+
+This repo is the Shiny research UI (`sespy_app/`, `app.py`). The analysis
+library is the separate `sespy` package (repo razinkele/SESPy), pinned by tag
+in `pyproject.toml`. Library modules are imported as `sespy.<x>`; UI modules
+as `sespy_app.<x>`. Never put the old monolith SESPy checkout on the path.
 
 ## Shiny for Python reference
 

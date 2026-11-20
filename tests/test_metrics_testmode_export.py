@@ -7,7 +7,7 @@ import pytest
 # installed.
 pytest.importorskip("pyvis.shiny")
 
-from sespy.modules import analysis_metrics
+from sespy_app.modules import analysis_metrics
 
 
 def test_cascade_snapshot_value_passes_dict_through():

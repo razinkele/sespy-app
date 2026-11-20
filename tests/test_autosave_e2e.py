@@ -15,7 +15,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from playwright.async_api import async_playwright
-
 from sespy.autosave import autosave_path, clear_autosave
 
 URL = "http://127.0.0.1:8000"

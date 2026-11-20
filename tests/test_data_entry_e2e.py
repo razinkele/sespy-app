@@ -43,7 +43,7 @@ async def main():
         # Add a new element from the Edit Data panel
         await page.fill("#entry-new_label", "Climate change")
         # Type select — pick "Pressures", NOT the shipped default. The select
-        # ships selected="Drivers" (sespy/modules/isa_data_entry.py:56-60) and
+        # ships selected="Drivers" (sespy_app/modules/isa_data_entry.py:56-60) and
         # the server falls back to "Drivers" anyway (isa_data_entry.py:195), so
         # choosing "Drivers" here can never fail. input_select renders a plain
         # visible <select> (shiny/ui/_input_select.py:194-195 pins
@@ -76,7 +76,7 @@ async def main():
         # element's id prefix is derived from it (_prefix_for("Pressures")
         # == "P", isa_data_entry.py:38; next_id -> "P004" given seed P001-P003)
         # and the pyvis node id is the element id
-        # (sespy/modules/cld_visualization.py:221-223).
+        # (sespy_app/modules/cld_visualization.py:221-223).
         new_id = await page.evaluate("""() => {
           const s = window.pyvisNetworks && window.pyvisNetworks['cld-network'];
           const n = s && s.nodes

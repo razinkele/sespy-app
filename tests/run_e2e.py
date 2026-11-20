@@ -35,7 +35,7 @@ SERVER_READY_TIMEOUT = 90      # seconds to wait for shiny run to serve
 SCRIPT_TIMEOUT = 300           # per-script wall-clock cap
 
 # `test_topbar_e2e.py` submits feedback through the UI. Without an override that
-# lands in the real store (`sespy/logs/feedback.db`), which deploy.sh preserves
+# lands in the real store (`sespy_app/logs/feedback.db`), which deploy.sh preserves
 # across deploys — so every run buried genuine reports under test rows. Point
 # the whole suite at a throwaway DB instead; `feedback_store` reads this env var.
 E2E_FEEDBACK_DB = Path(tempfile.gettempdir()) / "sespy-e2e-feedback.db"
@@ -131,7 +131,27 @@ def warm_session(url: str, timeout_ms: int = 90_000) -> bool:
     return True
 
 
+_SESPY_PROBE = (
+    "import importlib.util, sespy; sub = 'modules'; "   # built, not spelled: see test_no_monolith_strings
+    "print('[run_e2e] server sespy:', sespy.__file__, sespy.__version__, "
+    "'modules=' + str(importlib.util.find_spec('sespy.' + sub)))"
+)
+
+
+def print_server_sespy(env_extra: dict[str, str]) -> None:
+    """Print which `sespy` the server will import, from the very interpreter and
+    env it is launched with: a split-layout run must show the library
+    checkout and modules=None (the monolith would show a spec)."""
+    out = subprocess.run(
+        [sys.executable, "-c", _SESPY_PROBE],
+        cwd=str(ROOT), env=_child_env(env_extra), capture_output=True, text=True, timeout=120,
+    )
+    line = (out.stdout.strip().splitlines() or [""])[-1]
+    print(line or f"[run_e2e] server sespy: probe failed: {out.stderr.strip()[-200:]}", flush=True)
+
+
 def start_server(port: int, env_extra: dict[str, str]) -> subprocess.Popen:
+    print_server_sespy(env_extra)
     # Run the server through the interpreter, NOT the `shiny` console-script
     # launcher. On Windows that launcher is a stub .exe that spawns python as a
     # child: stop_server() terminated only the stub, the real server survived

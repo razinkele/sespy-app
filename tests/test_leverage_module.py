@@ -1,3 +1,6 @@
+from _paths import TRANSLATIONS
+
+
 def test_leverage_rows_carry_realm_and_alc():
     """ranked() must expose both new fields, and the realm must be the
     loop-aware one.
@@ -6,7 +9,7 @@ def test_leverage_rows_carry_realm_and_alc():
     earlier draft of these tests passed with the ALC column stripped out
     entirely, because it only checked that the functions were called.
     """
-    from sespy.modules import analysis_leverage
+    from sespy_app.modules import analysis_leverage
     src = analysis_leverage.__file__
     text = open(src, encoding="utf-8").read()
     assert "leverage_realms(" in text, "must use the loop-aware realms"
@@ -23,7 +26,7 @@ def test_leverage_enumerates_loops_once():
     """Every consumer must share ONE enumeration. feedback_loops is bounded
     but not free, and an earlier draft ran it twice per render because the
     truncation reactive re-enumerated."""
-    from sespy.modules import analysis_leverage
+    from sespy_app.modules import analysis_leverage
     text = open(analysis_leverage.__file__, encoding="utf-8").read()
     assert text.count("feedback_loops(") == 1, "one enumeration, shared"
     assert text.count("cycles=") == 3, (
@@ -36,11 +39,9 @@ def test_alc_translation_keys_exist_in_every_language():
     A hand-rolled recursive search over core.json would find a key sitting at
     the wrong nesting level and pass, while t() at runtime would not resolve
     it."""
-    from pathlib import Path
     from sespy.i18n import load_translations
 
-    root = Path(__file__).resolve().parents[1]
-    tr = load_translations(root / "sespy" / "translations")
+    tr = load_translations(TRANSLATIONS)
 
     langs = {"en", "es", "fr", "de", "lt", "pt", "it", "no", "el"}
     for key in ("leverage.caption", "leverage.alc_truncated"):
@@ -54,8 +55,9 @@ def test_promotion_actually_fires_on_the_sample_project():
     synthetic fixture. An Activity inside a detected loop must resolve to
     'feedbacks' where the type-only mapping would have said 'design'."""
     from pathlib import Path
+
     from sespy.data_structure import load_sample
-    from sespy.network import leverage_realms, leverage_realm
+    from sespy.network import leverage_realm, leverage_realms
 
     isa = load_sample(
         Path(__file__).resolve().parents[1] / "data" / "sample_ses.json")
