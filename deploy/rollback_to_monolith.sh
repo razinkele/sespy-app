@@ -13,6 +13,8 @@
 #      still exists; the chain restarts it once sespy_app/ is gone.
 #   2. ONE remote && chain in $DEPLOY_DIR, rename first:
 #      a. [ -d sespy/modules ] (the monolith is really there), else stop;
+#         and stop (exit 7) while sespy_app.old/logs or sespy_app.incoming/logs
+#         holds a store an interrupted sespy-app deploy left (see ROLLBACK.md);
 #      b. mv -T sespy_app sespy_app.retired (only while sespy_app/ is the
 #         installed package, i.e. holds __init__.py). Workers find the store
 #         by the path string $APP_DIR/sespy_app/logs, so from here on nothing
@@ -37,7 +39,7 @@
 # Settings: MONOLITH_ROOT (env only) is the ABSOLUTE path to a clean SESPy
 # worktree exactly on a v1.17.* tag, with sespy/modules. Use a FRESH worktree
 # with no deploy/config.env (not a reused tree that has one):
-#   git -C <SESPy repo> worktree add --detach C:/Users/arturas.baziukas/AppData/Local/sespy-v1171-rb v1.17.1
+#   git -C <SESPy repo> worktree add --detach <path-to>/sespy-v1171-rb v1.17.1
 # DEPLOY_SERVER,
 # DEPLOY_DIR and the optional DEPLOY_MOSAIC_DIR come from this repo's
 # deploy/config.env (sourced after the env, as deploy.sh does) or the env;
@@ -49,8 +51,8 @@
 # absolute paths of [A-Za-z0-9._/@+-] with no "." or ".." segment.
 #
 # Usage (from anywhere):
-#   MONOLITH_ROOT=C:/Users/arturas.baziukas/AppData/Local/sespy-v1171-rb bash deploy/rollback_to_monolith.sh         # print only
-#   MONOLITH_ROOT=C:/Users/arturas.baziukas/AppData/Local/sespy-v1171-rb bash deploy/rollback_to_monolith.sh --run   # do it
+#   MONOLITH_ROOT=<path-to>/sespy-v1171-rb bash deploy/rollback_to_monolith.sh         # print only
+#   MONOLITH_ROOT=<path-to>/sespy-v1171-rb bash deploy/rollback_to_monolith.sh --run   # do it
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -120,6 +122,10 @@ if [ -e "$M/deploy/config.env" ]; then
   echo "    ! WARNING: $M/deploy/config.env exists. The v1.17.x script sources it after the env, so inside step 1 its values override the exported DEPLOY_SERVER/DEPLOY_DIR (and it could re-set DEPLOY_MOSAIC_DIR). It must name the same server and dir as $SCRIPT_DIR/config.env (${DEPLOY_SERVER}:${DEPLOY_DIR})." >&2
 fi
 
+if [ -z "$DEPLOY_MOSAIC_DIR" ]; then
+  echo "    ! WARNING: DEPLOY_MOSAIC_DIR is empty, so MosaicSES will NOT be restarted; after the rollback, touch its restart.txt by hand." >&2
+fi
+
 # The remote chain (step 2). aside_logs DIR WHY: move DIR/logs to a fresh
 # logs.rescued-<ts>[-DIR-n], never deleting it.
 MOSAIC_TOUCH=""
@@ -137,6 +143,11 @@ CHAIN='aside_logs() {
 }'"
 cd '$DEPLOY_DIR' &&
   { [ -d sespy/modules ] || { echo '!! $DEPLOY_DIR/sespy/modules is absent: the monolith redeploy did not happen; nothing was changed' >&2; exit 3; }; } &&
+  for d in sespy_app.old sespy_app.incoming; do
+    if [ -e \"\$d/logs\" ]; then
+      echo \"!! $DEPLOY_DIR/\$d/logs holds a feedback store left by an interrupted sespy-app deploy; nothing was changed. Repair it by running the app's deploy/deploy.sh once, or move the store as deploy/ROLLBACK.md says (exit 7), then rerun\" >&2; exit 7;
+    fi;
+  done &&
   if [ -e sespy_app/__init__.py ]; then
     if [ -e sespy_app.retired ]; then
       echo '!! $DEPLOY_DIR has both an installed sespy_app/ and sespy_app.retired/; which holds the live feedback store needs a human. Nothing was changed' >&2; exit 4;

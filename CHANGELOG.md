@@ -15,9 +15,11 @@ Deploy hardening for the split cutover; no user-visible change.
 - `deploy.sh`: the library is staged with `git archive v$PIN`, so only tracked files ship.
 - `deploy.sh`: `.old` is restored over a non-package directory.
 - `deploy.sh`: refuses to run while `sespy_app.retired` exists (an interrupted rollback).
+- `deploy.sh`: the "not a sespy-app checkout" and "two feedback stores" aborts now point to `deploy/rollback_to_monolith.sh` and `deploy/ROLLBACK.md`.
 
 ### Added
 - `deploy/rollback_to_monolith.sh` and `deploy/ROLLBACK.md`: a tested rollback to the monolith 1.17.x. It renames first and never deletes a feedback store.
+- The rollback stops with exit 7, before changing anything, while `sespy_app.old/logs` or `sespy_app.incoming/logs` holds a store left by an interrupted deploy. It warns when `DEPLOY_MOSAIC_DIR` is empty, because MosaicSES then must be restarted by hand. `ROLLBACK.md` adds recovery steps for exit 4 and exit 7.
 
 ## [1.0.0] — 2026-11-20
 

@@ -197,7 +197,7 @@ if [ -z "$PIN" ]; then
   exit 2
 fi
 if [ ! -d sespy_app ] || [ ! -f app.py ]; then
-  echo "!! $REPO_ROOT has no sespy_app/ package or app.py, so it is not a sespy-app checkout (a pre-split monolith tag cannot be deployed with this script). Aborting before upload." >&2
+  echo "!! $REPO_ROOT has no sespy_app/ package or app.py, so it is not a sespy-app checkout (a pre-split monolith tag cannot be deployed with this script; to go back to the monolith, use deploy/rollback_to_monolith.sh, see deploy/ROLLBACK.md section B). Aborting before upload." >&2
   exit 2
 fi
 LIB="${ENV_LIBRARY_ROOT:-${DEPLOY_LIBRARY_ROOT:-}}"
@@ -499,7 +499,7 @@ STRAY_WHY='was recreated by a pre-cutover worker'
 # monolith (modules/). Tested as [ -e sespy_app/__init__.py ] in the branch
 # where NEW_LAYOUT is false, i.e. where sespy/modules exists.
 HALF_WHY='was recreated by the monolith after a half-done cutover'
-TWO_STORES="two feedback stores: merge $APP_DIR/sespy/logs and $APP_DIR/sespy_app/logs by hand"
+TWO_STORES="two feedback stores: merge $APP_DIR/sespy/logs and $APP_DIR/sespy_app/logs by hand (after a monolith rollback, a bare sespy_app/logs is a stray: rerun deploy/rollback_to_monolith.sh --run to set it aside, see deploy/ROLLBACK.md section B step 5)"
 RETIRED="a monolith rollback was interrupted ($APP_DIR/sespy_app.retired exists and may hold the live feedback store); finish it with deploy/rollback_to_monolith.sh --run (see deploy/ROLLBACK.md) before deploying"
 prologue_rc=0
 ssh "$SERVER" "$REMOTE_RESCUE

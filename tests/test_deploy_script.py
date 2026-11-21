@@ -1006,6 +1006,8 @@ def test_two_feedback_dbs_abort_before_swap(fake):
     assert cp.returncode != 0
     assert "two feedback stores" in fake.out
     assert f"{fake.app_posix}/sespy/logs" in fake.out and f"{fake.app_posix}/sespy_app/logs" in fake.out
+    # M5: points to the cheaper fix after a monolith rollback
+    assert "rollback_to_monolith.sh --run" in fake.out and "ROLLBACK.md section B step 5" in fake.out
     assert fake.incoming_scps() == []
     assert not any(SWAP_APP in c or SWAP_LIB in c for c in fake.calls("ssh"))
     assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == b"MONOLITH-DB"
@@ -1792,3 +1794,64 @@ def test_deploy_refuses_interrupted_monolith_rollback(fake):
     assert [c for c in fake.calls("scp") if c.split()[-1].startswith(f"{SERVER}:")] == []
     assert not any(SWAP_APP in c or SWAP_LIB in c for c in fake.calls("ssh"))
     assert _server_snapshot(fake) == before
+
+
+# --- branch fix wave: exit 7 and the MosaicSES restart warning --------------
+@pytest.mark.parametrize("leftover", ["sespy_app.old", "sespy_app.incoming"])
+def test_rollback_refuses_interrupted_app_deploy_leftovers(fake, leftover):
+    """M1: an interrupted sespy-app deploy left the store in
+    sespy_app.old/logs or sespy_app.incoming/logs (beside a bare stray
+    sespy_app/). The chain refuses with exit 7 before changing anything,
+    instead of finishing with the history invisible."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    fake.put("sespy/__init__.py", '__version__ = "1.17.1"\n')
+    fake.put("sespy/modules/__init__.py", "")
+    fake.put("sespy_app.old/__init__.py", '__version__ = "1.0.0"\n')
+    fake.put(f"{leftover}/logs/feedback.db", LIVE_DB)
+    fake.put("sespy_app/logs/feedback.db", STRAY_DB)
+    before = _server_snapshot(fake)
+    cp = _rollback(fake, mono, "--run", STUB_MONO_APPLY="0")
+    assert cp.returncode == 7, fake.out
+    assert f"{leftover}/logs holds a feedback store" in fake.out, fake.out
+    assert "deploy/deploy.sh once" in fake.out and "ROLLBACK.md" in fake.out
+    assert _server_snapshot(fake) == before
+    assert len(fake.calls("ssh")) == 1
+
+
+def test_rollback_exit7_check_adds_no_remote_call_in_print_mode(fake):
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    _split_with_live_store(fake)
+    _ok(_rollback(fake, mono), fake)
+    assert "sespy_app.incoming" in fake.out and "exit 7" in fake.out
+    assert fake.log_lines() == []
+
+
+@pytest.mark.parametrize("mode", ["print", "run"])
+def test_rollback_warns_when_mosaic_dir_empty(fake, mode):
+    """M2: with no DEPLOY_MOSAIC_DIR, MosaicSES is not restarted; say so."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    _split_with_live_store(fake)
+    _ok(_rollback(fake, mono, *(["--run"] if mode == "run" else [])), fake)
+    assert "MosaicSES will NOT be restarted" in fake.out, fake.out
+
+
+def test_rollback_no_mosaic_warning_when_mosaic_dir_set(fake):
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    mosaic = _mosaic(fake)
+    _split_with_live_store(fake)
+    _ok(_rollback(fake, mono, DEPLOY_MOSAIC_DIR=_posix(mosaic)), fake)
+    assert "MosaicSES will NOT be restarted" not in fake.out
+
+
+def test_monolith_tree_abort_points_to_rollback(fake):
+    """M3: deploying a tree without sespy_app/ (a pre-split monolith tag)
+    aborts before any remote call and names the monolith rollback."""
+    shutil.rmtree(fake.repo / "sespy_app")
+    cp = fake.run("--rollback")
+    assert cp.returncode != 0, fake.out
+    assert "rollback_to_monolith.sh" in fake.out and "ROLLBACK.md section B" in fake.out, fake.out
+    assert fake.calls("ssh") == [] and fake.calls("scp") == []
