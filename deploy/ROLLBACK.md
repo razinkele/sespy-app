@@ -135,14 +135,43 @@ Keep the `sespy_app.stale-*` directory until you have checked it holds no
 
 ### Exit 7: a store left by an interrupted sespy-app deploy
 
-The rollback stops (exit 7) before changing anything, because
-`sespy_app.old/logs` or `sespy_app.incoming/logs` holds a feedback store. Fix
-it one of two ways, then rerun step 3 of section B:
+The monolith redeploy (step 1) already ran; the layout chain changed nothing.
+It stopped because `sespy_app.incoming/logs` or `sespy_app.old/logs` holds a
+feedback store that an interrupted sespy-app deploy left there.
 
-- Repair it by running the app's deploy once from this checkout. Its first
-  step moves the store back into `sespy_app/logs`:
-  `bash deploy/deploy.sh`
-- Or move it by hand on the server, in the app directory. Only do this if
-  neither `sespy_app/__init__.py` nor `sespy_app.retired` exists. Use the
-  directory the message named:
-  `mkdir sespy_app.retired && mv -T sespy_app.old/logs sespy_app.retired/logs`
+The most likely case is cutover day. `deploy.sh` moves `sespy/logs` into
+`sespy_app.incoming/logs`, then renames `sespy_app.incoming` to `sespy_app`.
+If it died between those two steps, the live store is in
+`sespy_app.incoming/logs`.
+
+**Fix (primary):** hand the store to the rollback by moving it into
+`sespy_app.retired/logs`, then rerun step 3 of section B. Run this on the
+server, in the app directory (`ssh <server>`, then `cd <app dir>`). Only do
+it if neither `sespy_app/__init__.py` nor `sespy_app.retired` exists. Paste
+the line for the directory the message named:
+
+- for `sespy_app.incoming` (cutover day):
+  `[ -d sespy_app.incoming/logs ] && mkdir sespy_app.retired && { mv -T sespy_app.incoming/logs sespy_app.retired/logs || rmdir sespy_app.retired; }`
+- for `sespy_app.old`:
+  `[ -d sespy_app.old/logs ] && mkdir sespy_app.retired && { mv -T sespy_app.old/logs sespy_app.retired/logs || rmdir sespy_app.retired; }`
+
+Each line does nothing if its directory holds no `logs/`. It never leaves an
+empty `sespy_app.retired` behind.
+
+If BOTH `.incoming/logs` and `.old/logs` exist, the deploy moved the live
+store into `.incoming`, and a worker recreated the one in `.old`. Set the
+`.old` one aside first, then use the `.incoming` line:
+`mv -T sespy_app.old/logs logs.rescued-$(date +%Y%m%d%H%M%S)`
+Rerun step 3 until it no longer stops at exit 7.
+
+After the fix, an emptied `sespy_app.incoming/` or `sespy_app.old/` stays on
+the server. That is expected and harmless. The next `deploy/deploy.sh` cleans
+it up: its first step removes `.incoming`, and restores `.old`, which the swap
+then replaces. If you stay on the monolith and want it gone sooner, check
+that `ls -A <dir>` shows no `logs`, then rename it aside:
+`mv -T <dir> sespy_app.stale-$(date +%Y%m%d%H%M%S)`
+
+**Alternative (not a rollback):** `bash deploy/deploy.sh` from this checkout
+also repairs the leftovers. But this COMPLETES the cutover instead of rolling
+back: it deploys the split app again, and sets the monolith's newer
+`sespy/logs` aside. Then rerun the rollback if you still want the monolith.

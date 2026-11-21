@@ -19,7 +19,7 @@ Deploy hardening for the split cutover; no user-visible change.
 
 ### Added
 - `deploy/rollback_to_monolith.sh` and `deploy/ROLLBACK.md`: a tested rollback to the monolith 1.17.x. It renames first and never deletes a feedback store.
-- The rollback stops with exit 7, before changing anything, while `sespy_app.old/logs` or `sespy_app.incoming/logs` holds a store left by an interrupted deploy. It warns when `DEPLOY_MOSAIC_DIR` is empty, because MosaicSES then must be restarted by hand. `ROLLBACK.md` adds recovery steps for exit 4 and exit 7.
+- After the monolith redeploy, the rollback stops with exit 7 (the layout chain changes nothing) while `sespy_app.old/logs` or `sespy_app.incoming/logs` holds a store left by an interrupted deploy. It warns when `DEPLOY_MOSAIC_DIR` is empty, because MosaicSES then must be restarted by hand. `ROLLBACK.md` adds recovery steps for exit 4 and exit 7 (including the cutover-day state, with the store in `sespy_app.incoming/logs`).
 
 ## [1.0.0] — 2026-11-20
 

@@ -142,15 +142,15 @@ CHAIN='aside_logs() {
     echo "!! NOTE: $1/logs $2; kept it as $PWD/$r - merge it by hand if it holds rows" >&2
 }'"
 cd '$DEPLOY_DIR' &&
-  { [ -d sespy/modules ] || { echo '!! $DEPLOY_DIR/sespy/modules is absent: the monolith redeploy did not happen; nothing was changed' >&2; exit 3; }; } &&
+  { [ -d sespy/modules ] || { echo '!! $DEPLOY_DIR/sespy/modules is absent: the monolith redeploy did not happen; the layout chain changed nothing' >&2; exit 3; }; } &&
   for d in sespy_app.old sespy_app.incoming; do
     if [ -e \"\$d/logs\" ]; then
-      echo \"!! $DEPLOY_DIR/\$d/logs holds a feedback store left by an interrupted sespy-app deploy; nothing was changed. Repair it by running the app's deploy/deploy.sh once, or move the store as deploy/ROLLBACK.md says (exit 7), then rerun\" >&2; exit 7;
+      echo \"!! $DEPLOY_DIR/\$d/logs holds a feedback store left by an interrupted sespy-app deploy. The monolith redeploy already ran; the layout chain changed nothing. Move the store into sespy_app.retired as deploy/ROLLBACK.md says (exit 7), then rerun\" >&2; exit 7;
     fi;
   done &&
   if [ -e sespy_app/__init__.py ]; then
     if [ -e sespy_app.retired ]; then
-      echo '!! $DEPLOY_DIR has both an installed sespy_app/ and sespy_app.retired/; which holds the live feedback store needs a human. Nothing was changed' >&2; exit 4;
+      echo '!! $DEPLOY_DIR has both an installed sespy_app/ and sespy_app.retired/; which holds the live feedback store needs a human (deploy/ROLLBACK.md, exit 4); the layout chain changed nothing' >&2; exit 4;
     fi;
     mv -T sespy_app sespy_app.retired;
   fi &&

@@ -1801,8 +1801,8 @@ def test_deploy_refuses_interrupted_monolith_rollback(fake):
 def test_rollback_refuses_interrupted_app_deploy_leftovers(fake, leftover):
     """M1: an interrupted sespy-app deploy left the store in
     sespy_app.old/logs or sespy_app.incoming/logs (beside a bare stray
-    sespy_app/). The chain refuses with exit 7 before changing anything,
-    instead of finishing with the history invisible."""
+    sespy_app/). After the monolith redeploy the chain refuses with exit 7
+    and changes nothing, instead of finishing with the history invisible."""
     _with_rollback(fake)
     mono = _build_mono(fake.base / "mono")
     fake.put("sespy/__init__.py", '__version__ = "1.17.1"\n')
@@ -1814,9 +1814,73 @@ def test_rollback_refuses_interrupted_app_deploy_leftovers(fake, leftover):
     cp = _rollback(fake, mono, "--run", STUB_MONO_APPLY="0")
     assert cp.returncode == 7, fake.out
     assert f"{leftover}/logs holds a feedback store" in fake.out, fake.out
-    assert "deploy/deploy.sh once" in fake.out and "ROLLBACK.md" in fake.out
+    assert "The monolith redeploy already ran; the layout chain changed nothing" in fake.out, fake.out
+    assert "ROLLBACK.md" in fake.out and "deploy/deploy.sh once" not in fake.out
     assert _server_snapshot(fake) == before
     assert len(fake.calls("ssh")) == 1
+
+
+# The exit-7 manual fix, exactly as deploy/ROLLBACK.md gives it.
+EXIT7_FIX = {
+    d: f"[ -d {d}/logs ] && mkdir sespy_app.retired && "
+       f"{{ mv -T {d}/logs sespy_app.retired/logs || rmdir sespy_app.retired; }}"
+    for d in ("sespy_app.incoming", "sespy_app.old")
+}
+
+
+def test_rollback_md_gives_the_tested_exit7_commands():
+    text = (ROOT / "deploy" / "ROLLBACK.md").read_text(encoding="utf-8")
+    for cmd in EXIT7_FIX.values():
+        assert f"`{cmd}`" in text, cmd
+
+
+def _remote(fake: Fake, cmd: str) -> subprocess.CompletedProcess:
+    return subprocess.run([BASH, "-c", f"cd '{fake.app_posix}' && {cmd}"], capture_output=True, text=True)
+
+
+def test_rollback_exit7_cutover_day_recovery(fake):
+    """The cutover-day state: deploy.sh moved sespy/logs into
+    sespy_app.incoming/logs and died before renaming .incoming; a rollback then
+    redeploys the monolith and stops at exit 7. Pasting the WRONG (.old)
+    variant changes nothing and leaves no empty sespy_app.retired; the .incoming
+    variant plus a rerun moves the store back, leaving only the emptied
+    .incoming (which the next deploy.sh prologue removes)."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    fake.put("sespy/__init__.py", '__version__ = "1.17.1"\n')
+    fake.put("sespy/modules/__init__.py", "")
+    fake.put("sespy_app.incoming/__init__.py", '__version__ = "1.0.1"\n')
+    fake.put("sespy_app.incoming/logs/feedback.db", LIVE_DB)
+    fake.put("sespy_app.incoming/logs/feedback.db-wal", LIVE_WAL)
+    assert _rollback(fake, mono, "--run", STUB_MONO_APPLY="0").returncode == 7, fake.out
+    before = _server_snapshot(fake)
+    assert _remote(fake, EXIT7_FIX["sespy_app.old"]).returncode != 0
+    assert not (fake.app / "sespy_app.retired").exists()
+    assert _server_snapshot(fake) == before
+    assert _remote(fake, EXIT7_FIX["sespy_app.incoming"]).returncode == 0
+    _ok(_rollback(fake, mono, "--run", STUB_MONO_APPLY="0"), fake)
+    logs = fake.app / "sespy" / "logs"
+    assert (logs / "feedback.db").read_bytes() == LIVE_DB
+    assert (logs / "feedback.db-wal").read_bytes() == LIVE_WAL
+    assert _rescued(fake) == []
+    assert not (fake.app / "sespy_app.retired").exists()
+    assert not (fake.app / "sespy_app").exists()
+    assert not (fake.app / "sespy_app.incoming" / "logs").exists()
+
+
+@pytest.mark.parametrize("leftover", ["sespy_app.incoming", "sespy_app.old"])
+def test_deploy_prologue_clears_emptied_exit7_leftovers(fake, leftover):
+    """m3: after the manual exit-7 fix and a finished rollback, the emptied
+    .incoming/ or .old/ stays. The next deploy cleans it up (.incoming is
+    removed; .old is restored, then replaced by the swap) and the cutover
+    migrates the monolith's sespy/logs as usual."""
+    fake.old_layout(db=LIVE_DB)
+    fake.put(f"{leftover}/__init__.py", '__version__ = "1.0.1"\n')
+    _ok(fake.run(), fake)
+    for d in ("sespy_app.incoming", "sespy_app.old"):
+        assert not (fake.app / d).exists(), d
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == LIVE_DB
+    assert _rescued(fake) == []
 
 
 def test_rollback_exit7_check_adds_no_remote_call_in_print_mode(fake):
