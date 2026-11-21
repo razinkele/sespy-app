@@ -30,8 +30,10 @@
 # always the whole logs/ directory, never feedback.db alone. The first deploy
 # onto the pre-split layout (sespy/ = monolith, owning sespy/logs/) moves
 # sespy/logs once into the new sespy_app/; if both sespy/logs and
-# sespy_app/logs exist the deploy aborts before any rename. No feedback store
-# is ever deleted: a stranded one is kept as $APP_DIR/logs.rescued-<timestamp>.
+# sespy_app/logs exist in that layout the deploy aborts before any rename
+# (unless sespy_app/__init__.py is installed: a half-done cutover, whose
+# sespy/logs is moved aside and the cutover finished). No feedback store is
+# ever deleted: a stranded one is kept as $APP_DIR/logs.rescued-<timestamp>.
 #
 # Prerequisites:
 #   * passwordless (key-based) SSH to $SERVER for the deploy user
@@ -195,7 +197,7 @@ if [ -z "$PIN" ]; then
   exit 2
 fi
 if [ ! -d sespy_app ] || [ ! -f app.py ]; then
-  echo "!! $REPO_ROOT has no sespy_app/ package or app.py, so it is not a sespy-app checkout (a pre-split monolith tag cannot be deployed with this script). Aborting before upload." >&2
+  echo "!! $REPO_ROOT has no sespy_app/ package or app.py, so it is not a sespy-app checkout (a pre-split monolith tag cannot be deployed with this script; to go back to the monolith, use deploy/rollback_to_monolith.sh, see deploy/ROLLBACK.md section B). Aborting before upload." >&2
   exit 2
 fi
 LIB="${ENV_LIBRARY_ROOT:-${DEPLOY_LIBRARY_ROOT:-}}"
@@ -261,8 +263,10 @@ done
 mkdir -p "$STAGE/docs"
 cp docs/MANUAL.md "$STAGE/docs/"
 cp -R docs/screenshots "$STAGE/docs/"
-# The pinned library, vendored (the server has no pip install of it).
-cp -R "$LIB/sespy" "$STAGE/sespy"
+# The pinned library, vendored (the server has no pip install of it), taken
+# from the tag itself: git status --porcelain hides ignored files, so a copy of
+# the working tree could ship ignored local content under $LIB/sespy.
+git -C "$LIB" archive "v$PIN" sespy | tar -x -C "$STAGE"
 find "$STAGE" -name __pycache__ -type d -prune -exec rm -rf {} +
 find "$STAGE" -name '*.pyc' -delete
 # Never ship a runtime feedback DB / logs. The server OWNS its own
@@ -409,8 +413,11 @@ rm -rf "$STAGE/.live"
 # 3. Recovery prologue: repair what an interrupted earlier deploy left behind,
 #    then clear any half-uploaded incoming package. It covers both this
 #    script's sespy_app/sespy pairs and the pre-split script's sespy pair.
-#    - a package gone but its .old there: a swap died between a pair's two
-#      mv's; the .old comes back.
+#    - a package gone, or present without __init__.py, while its .old is
+#      there: a swap died between a pair's two mv's; the .old comes back. A
+#      non-package dir in the way (a worker recreated it, often just logs/)
+#      first has its logs/ set aside to logs.rescued-<ts>, then is removed
+#      with rmdir; if it holds anything else the deploy aborts naming it.
 #    - logs/ in sespy_app.old, sespy_app.incoming, sespy.old or
 #      sespy.incoming: a swap died after moving the logs. A directory that
 #      still holds logs/ is NEVER deleted with them: the logs go back to the
@@ -428,10 +435,20 @@ rm -rf "$STAGE/.live"
 #      (Shiny Server keeps existing sessions on the old process) recreated
 #      it inside the library; it is moved aside, never deleted, and the
 #      deploy continues.
-#    - sespy/logs AND sespy_app/logs both present in the OLD layout (sespy/
-#      is still the monolith, with modules/): two feedback stores, which
-#      only a human can merge; abort before any upload or swap.
+#    - a half-done cutover (sespy_app/__init__.py installed, sespy/ still the
+#      monolith with modules/): the cutover chain died after the sespy_app
+#      pair, so sespy_app/logs holds the migrated store and a sespy/logs
+#      beside it was recreated by the still-live monolith; it is moved aside
+#      with a warning and the deploy finishes the cutover.
+#    - sespy/logs AND sespy_app/logs both present in the genuine OLD layout
+#      (no sespy_app/__init__.py, sespy/ the monolith): two feedback stores,
+#      which only a human can merge; abort before any upload or swap.
 #    - a half-uploaded app.py.incoming is removed.
+#    - $APP_DIR/sespy_app.retired exists: a monolith rollback
+#      (deploy/rollback_to_monolith.sh) was interrupted after retiring
+#      sespy_app/, so the live feedback store may sit in .retired/logs. This
+#      script would start an empty store beside it; abort before anything
+#      else in the prologue, and again first thing in the swap.
 # Remote helpers, defined in every ssh that may delete a .old/.incoming dir.
 # aside_logs DIR WHY: move DIR/logs to a fresh logs.rescued-<ts>[-DIR-n].
 # rescue_logs DIR HOME: move DIR/logs to HOME/logs, or aside if that exists.
@@ -451,17 +468,49 @@ rescue_logs() {
     aside_logs "$1" "was stranded and $2/logs already exists"
   fi
 }'
+# Prologue-only helpers. needs_restore X: X.old is a dir and X is absent or
+# not a package. check_restore X: fail (4), naming X, when a non-package X in
+# the way holds more than logs/. restore_old X: set X/logs aside, rmdir X (it
+# is empty then; never rm -rf), and rename X.old back to X.
+REMOTE_RESTORE='needs_restore() { [ -d "$1.old" ] && [ ! -e "$1/__init__.py" ]; }
+check_restore() {
+  needs_restore "$1" || return 0
+  [ -e "$1" ] || return 0
+  if [ -n "$(ls -A "$1" | grep -vx logs)" ]; then
+    echo "!! $PWD/$1 is not a package (no __init__.py) and holds more than logs/, so $1.old cannot be restored over it; move it away by hand" >&2
+    return 4
+  fi
+}
+restore_old() {
+  needs_restore "$1" || return 0
+  if [ -e "$1" ]; then
+    if [ -e "$1/logs" ]; then
+      aside_logs "$1" "was recreated in a non-package $1/ beside $1.old" || return
+    fi
+    rmdir "$1" || return
+  fi
+  mv -T "$1.old" "$1"
+}'
 # NEW_LAYOUT: remote test, true once sespy_app/ is installed and sespy/ is
 # the library (no monolith modules/).
 NEW_LAYOUT='[ -e sespy_app/__init__.py ] && [ ! -e sespy/modules ]'
 STRAY_WHY='was recreated by a pre-cutover worker'
-TWO_STORES="two feedback stores: merge $APP_DIR/sespy/logs and $APP_DIR/sespy_app/logs by hand"
+# Half-done cutover: sespy_app/__init__.py installed but sespy/ still the
+# monolith (modules/). Tested as [ -e sespy_app/__init__.py ] in the branch
+# where NEW_LAYOUT is false, i.e. where sespy/modules exists.
+HALF_WHY='was recreated by the monolith after a half-done cutover'
+TWO_STORES="two feedback stores: merge $APP_DIR/sespy/logs and $APP_DIR/sespy_app/logs by hand (after a monolith rollback, a bare sespy_app/logs is a stray: rerun deploy/rollback_to_monolith.sh --run to set it aside, see deploy/ROLLBACK.md section B step 5)"
+RETIRED="a monolith rollback was interrupted ($APP_DIR/sespy_app.retired exists and may hold the live feedback store); finish it with deploy/rollback_to_monolith.sh --run (see deploy/ROLLBACK.md) before deploying"
 prologue_rc=0
 ssh "$SERVER" "$REMOTE_RESCUE
+$REMOTE_RESTORE
   mkdir -p '$APP_DIR' &&
   cd '$APP_DIR' &&
-  if [ ! -e sespy_app ] && [ -d sespy_app.old ]; then mv -T sespy_app.old sespy_app; fi &&
-  if [ ! -e sespy ] && [ -d sespy.old ]; then mv -T sespy.old sespy; fi &&
+  if [ -e sespy_app.retired ]; then exit 6; fi &&
+  check_restore sespy_app &&
+  check_restore sespy &&
+  restore_old sespy_app &&
+  restore_old sespy &&
   if [ -d sespy_app ]; then home=sespy_app; else home=sespy; fi &&
   rescue_logs sespy_app.old \"\$home\" &&
   rescue_logs sespy_app.incoming \"\$home\" &&
@@ -475,10 +524,18 @@ ssh "$SERVER" "$REMOTE_RESCUE
   rm -f app.py.incoming &&
   if $NEW_LAYOUT; then
     if [ -e sespy/logs ]; then aside_logs sespy '$STRAY_WHY'; fi;
-  elif [ -e sespy/logs ] && [ -e sespy_app/logs ]; then exit 3; fi
+  elif [ -e sespy/logs ] && [ -e sespy_app/logs ]; then
+    if [ -e sespy_app/__init__.py ]; then aside_logs sespy '$HALF_WHY'; else exit 3; fi;
+  fi
 " || prologue_rc=$?
 if [ "$prologue_rc" -eq 3 ]; then
   echo "!! ${TWO_STORES}. Aborting before upload; nothing was swapped." >&2
+  exit 2
+elif [ "$prologue_rc" -eq 6 ]; then
+  echo "!! ${RETIRED}. Aborting before upload; nothing was changed." >&2
+  exit 2
+elif [ "$prologue_rc" -eq 4 ]; then
+  echo "!! a non-package directory blocks restoring its .old on ${SERVER} (named above). Aborting before upload; nothing was swapped." >&2
   exit 2
 elif [ "$prologue_rc" -ne 0 ]; then
   echo "!! the recovery step on ${SERVER} failed (exit $prologue_rc). Aborting before upload." >&2
@@ -487,9 +544,9 @@ fi
 
 # 4. Upload both packages and app.py beside the live ones, ALL before any
 #    rename, then swap in ONE remote && chain:
-#    - a stray sespy/logs in the new layout goes aside (as in step 3; a
-#      worker may have recreated it since), while two stores in the old
-#      layout abort before any rename;
+#    - a stray sespy/logs in the new layout or in a half-done cutover goes
+#      aside (as in step 3; a worker may have recreated it since), while two
+#      stores in the genuine old layout abort before any rename;
 #    - the feedback store moves into sespy_app.incoming as a whole logs/ dir:
 #      sespy_app/logs on repeat deploys, or, once, the pre-split sespy/logs;
 #    - the sespy_app rename pair, then the sespy rename pair. sespy_app goes
@@ -513,10 +570,12 @@ scp -q "$STAGE/app.py" "$SERVER:$APP_DIR/app.py.incoming"
 swap_rc=0
 ssh "$SERVER" "$REMOTE_RESCUE
   cd '$APP_DIR' &&
+  if [ -e sespy_app.retired ]; then echo '!! $RETIRED' >&2; exit 6; fi &&
   if $NEW_LAYOUT; then
     if [ -e sespy/logs ]; then aside_logs sespy '$STRAY_WHY'; fi;
   elif [ -e sespy/logs ] && [ -e sespy_app/logs ]; then
-    echo '!! $TWO_STORES' >&2; exit 3;
+    if [ -e sespy_app/__init__.py ]; then aside_logs sespy '$HALF_WHY';
+    else echo '!! $TWO_STORES' >&2; exit 3; fi;
   fi &&
   if [ -d sespy_app/logs ]; then mv -T sespy_app/logs sespy_app.incoming/logs;
   elif [ -d sespy/logs ]; then mv -T sespy/logs sespy_app.incoming/logs; fi &&
