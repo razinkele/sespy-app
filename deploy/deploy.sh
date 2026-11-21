@@ -444,6 +444,11 @@ rm -rf "$STAGE/.live"
 #      (no sespy_app/__init__.py, sespy/ the monolith): two feedback stores,
 #      which only a human can merge; abort before any upload or swap.
 #    - a half-uploaded app.py.incoming is removed.
+#    - $APP_DIR/sespy_app.retired exists: a monolith rollback
+#      (deploy/rollback_to_monolith.sh) was interrupted after retiring
+#      sespy_app/, so the live feedback store may sit in .retired/logs. This
+#      script would start an empty store beside it; abort before anything
+#      else in the prologue, and again first thing in the swap.
 # Remote helpers, defined in every ssh that may delete a .old/.incoming dir.
 # aside_logs DIR WHY: move DIR/logs to a fresh logs.rescued-<ts>[-DIR-n].
 # rescue_logs DIR HOME: move DIR/logs to HOME/logs, or aside if that exists.
@@ -495,11 +500,13 @@ STRAY_WHY='was recreated by a pre-cutover worker'
 # where NEW_LAYOUT is false, i.e. where sespy/modules exists.
 HALF_WHY='was recreated by the monolith after a half-done cutover'
 TWO_STORES="two feedback stores: merge $APP_DIR/sespy/logs and $APP_DIR/sespy_app/logs by hand"
+RETIRED="a monolith rollback was interrupted ($APP_DIR/sespy_app.retired exists and may hold the live feedback store); finish it with deploy/rollback_to_monolith.sh --run (see deploy/ROLLBACK.md) before deploying"
 prologue_rc=0
 ssh "$SERVER" "$REMOTE_RESCUE
 $REMOTE_RESTORE
   mkdir -p '$APP_DIR' &&
   cd '$APP_DIR' &&
+  if [ -e sespy_app.retired ]; then exit 6; fi &&
   check_restore sespy_app &&
   check_restore sespy &&
   restore_old sespy_app &&
@@ -523,6 +530,9 @@ $REMOTE_RESTORE
 " || prologue_rc=$?
 if [ "$prologue_rc" -eq 3 ]; then
   echo "!! ${TWO_STORES}. Aborting before upload; nothing was swapped." >&2
+  exit 2
+elif [ "$prologue_rc" -eq 6 ]; then
+  echo "!! ${RETIRED}. Aborting before upload; nothing was changed." >&2
   exit 2
 elif [ "$prologue_rc" -eq 4 ]; then
   echo "!! a non-package directory blocks restoring its .old on ${SERVER} (named above). Aborting before upload; nothing was swapped." >&2
@@ -560,6 +570,7 @@ scp -q "$STAGE/app.py" "$SERVER:$APP_DIR/app.py.incoming"
 swap_rc=0
 ssh "$SERVER" "$REMOTE_RESCUE
   cd '$APP_DIR' &&
+  if [ -e sespy_app.retired ]; then echo '!! $RETIRED' >&2; exit 6; fi &&
   if $NEW_LAYOUT; then
     if [ -e sespy/logs ]; then aside_logs sespy '$STRAY_WHY'; fi;
   elif [ -e sespy/logs ] && [ -e sespy_app/logs ]; then

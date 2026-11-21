@@ -1368,7 +1368,9 @@ ROLLBACK = "rollback_to_monolith.sh"
 LIVE_DB = b"SQLite format 3\x00" + b"LIVE-STORE-ROW" * 150
 LIVE_WAL = b"LIVE-WAL" * 40
 LIVE_SHM = b"LIVE-SHM" * 20
-CHAIN_MV = "mv -T sespy_app/logs sespy/logs"
+CHAIN_RETIRE = "mv -T sespy_app sespy_app.retired"
+CHAIN_MV = "mv -T sespy_app.retired/logs sespy/logs"
+STRAY_DB = b"STRAY-WORKER-ROW" * 25
 
 
 def _build_mono(path: Path, *, tag: str = "v1.17.1", modules: bool = True) -> Path:
@@ -1428,7 +1430,7 @@ def test_rollback_chain_restores_monolith_layout(fake):
     _ok(cp, fake)
     monos = fake.calls("mono")
     assert monos == [f"mono server={SERVER} dir={fake.app_posix} repo={_posix(mono)} "
-                     f"mosaic={_posix(mosaic)} args=--rollback"], fake.log_lines()
+                     "mosaic= args=--rollback"], fake.log_lines()
     # the live store (with its sidecars) is the monolith's store again
     logs = fake.app / "sespy" / "logs"
     assert (logs / "feedback.db").read_bytes() == LIVE_DB
@@ -1444,8 +1446,15 @@ def test_rollback_chain_restores_monolith_layout(fake):
     assert (mosaic / "restart.txt").is_file()
     chain = fake.calls("ssh")
     assert len(chain) == 1 and CHAIN_MV in chain[0], chain
+    # rename first: sespy_app is retired before the store is read
+    assert chain[0].index(CHAIN_RETIRE) < chain[0].index(CHAIN_MV)
+    # the live sespy_app path is never rm -rf'd, only the retired dir
+    assert not re.search(r"rm -rf sespy_app(?!\.retired)", chain[0]), chain[0]
     assert f"touch '{fake.app_posix}/restart.txt'" in chain[0]
+    # M4: step 1 saw an empty DEPLOY_MOSAIC_DIR (asserted above); only the
+    # chain restarts MosaicSES, after sespy_app/ is gone
     assert f"touch '{_posix(mosaic)}/restart.txt'" in chain[0]
+    assert chain[0].index("rmdir sespy_app") < chain[0].index(f"touch '{_posix(mosaic)}/restart.txt'")
 
 
 def test_rollback_chain_right_after_monolith_deploy(fake):
@@ -1558,7 +1567,7 @@ def test_rollback_exports_app_config_env(fake):
     cp = _rollback(fake, mono, "--run", _drop=("DEPLOY_SERVER", "DEPLOY_DIR", "DEPLOY_MOSAIC_DIR"))
     _ok(cp, fake)
     assert fake.calls("mono") == [f"mono server={SERVER} dir={fake.app_posix} repo={_posix(mono)} "
-                                  f"mosaic={_posix(mosaic)} args=--rollback"], fake.log_lines()
+                                  "mosaic= args=--rollback"], fake.log_lines()
     assert (mosaic / "restart.txt").is_file()
     assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == LIVE_DB
 
@@ -1591,3 +1600,195 @@ def test_rollback_chain_rerun_keeps_live_store(fake):
         assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == LIVE_DB
         assert _rescued(fake) == []
         assert not (fake.app / "sespy_app").exists()
+
+
+# --- fix round 1: rename-first chain, strays, guard, config warning ---------
+def _monolith_with_live_store(fake: Fake) -> None:
+    """A completed rollback: the monolith sespy/ owns the live sespy/logs."""
+    fake.put("sespy/__init__.py", '__version__ = "1.17.1"\n')
+    fake.put("sespy/modules/__init__.py", "")
+    fake.put("sespy/logs/feedback.db", LIVE_DB)
+
+
+def test_rollback_rerun_after_completion_sets_bare_stray_aside(fake):
+    """I1 scenario A: after a completed rollback a pre-rollback split session
+    recreated a bare sespy_app/logs (no __init__.py). A rerun keeps the live
+    monolith sespy/logs and sets the stray aside; sespy_app/ is gone."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    _monolith_with_live_store(fake)
+    fake.put("sespy_app/logs/feedback.db", STRAY_DB)
+    _ok(_rollback(fake, mono, "--run", STUB_MONO_APPLY="0"), fake)
+    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == LIVE_DB
+    rescued = _rescued(fake)
+    assert len(rescued) == 1 and (rescued[0] / "feedback.db").read_bytes() == STRAY_DB, rescued
+    assert not (fake.app / "sespy_app").exists()
+    assert not (fake.app / "sespy_app.retired").exists()
+
+
+def test_rollback_rerun_resumes_retired_store(fake):
+    """A death right after the retire rename leaves the live store in
+    sespy_app.retired/logs; meanwhile the monolith wrote sespy/logs and a stray
+    worker recreated a bare sespy_app/logs. The rerun resumes: the retired
+    store becomes sespy/logs, both others are set aside, nothing is deleted."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    fake.put("sespy/__init__.py", '__version__ = "1.17.1"\n')
+    fake.put("sespy/modules/__init__.py", "")
+    fake.put("sespy/logs/feedback.db", "FRESH-MONOLITH-DB")
+    fake.put("sespy_app.retired/__init__.py", '__version__ = "1.0.0"\n')
+    fake.put("sespy_app.retired/logs/feedback.db", LIVE_DB)
+    fake.put("sespy_app.retired/logs/feedback.db-wal", LIVE_WAL)
+    fake.put("sespy_app/logs/feedback.db", STRAY_DB)
+    _ok(_rollback(fake, mono, "--run", STUB_MONO_APPLY="0"), fake)
+    logs = fake.app / "sespy" / "logs"
+    assert (logs / "feedback.db").read_bytes() == LIVE_DB
+    assert (logs / "feedback.db-wal").read_bytes() == LIVE_WAL
+    rescued = sorted((r / "feedback.db").read_bytes() for r in _rescued(fake))
+    assert rescued == sorted([b"FRESH-MONOLITH-DB", STRAY_DB]), rescued
+    assert not (fake.app / "sespy_app.retired").exists()
+    assert not (fake.app / "sespy_app").exists()
+
+
+def test_rollback_stray_recreated_during_chain_is_set_aside(fake):
+    """M2 / I2: a split worker recreates sespy_app/logs right after the retire
+    rename. It is set aside (never rm -rf'd); the live store still moves back."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    _split_with_live_store(fake)
+    prelude = ('mv() { command mv "$@" || return; '
+               'if [ "$*" = "-T sespy_app sespy_app.retired" ]; then '
+               'mkdir -p sespy_app/logs && printf STRAY-RACE > sespy_app/logs/feedback.db; fi; }')
+    _ok(_rollback(fake, mono, "--run", STUB_MONO_FRESH="0", STUB_SSH_PRELUDE=prelude), fake)
+    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == LIVE_DB
+    rescued = _rescued(fake)
+    assert len(rescued) == 1 and (rescued[0] / "feedback.db").read_bytes() == b"STRAY-RACE", rescued
+    assert not (fake.app / "sespy_app").exists()
+    assert not (fake.app / "sespy_app.retired").exists()
+
+
+def test_rollback_stray_holding_more_than_logs_is_never_rm_rf(fake):
+    """A recreated sespy_app/ holding anything besides logs/ stops the chain at
+    rmdir: its logs are set aside first, the rest is left for a human."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    _monolith_with_live_store(fake)
+    fake.put("sespy_app/logs/feedback.db", STRAY_DB)
+    fake.put("sespy_app/unexpected.txt", "keep me")
+    cp = _rollback(fake, mono, "--run", STUB_MONO_APPLY="0")
+    assert cp.returncode != 0, fake.out
+    assert "more than logs/" in fake.out, fake.out
+    assert (fake.app / "sespy_app" / "unexpected.txt").read_text() == "keep me"
+    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == LIVE_DB
+    rescued = _rescued(fake)
+    assert len(rescued) == 1 and (rescued[0] / "feedback.db").read_bytes() == STRAY_DB
+    assert not (fake.app / "restart.txt").exists()
+
+
+def test_rollback_installed_and_retired_together_stops(fake):
+    """Both an installed sespy_app/ and sespy_app.retired/: which one holds the
+    live store needs a human; the chain changes nothing."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    fake.put("sespy/__init__.py", '__version__ = "1.17.1"\n')
+    fake.put("sespy/modules/__init__.py", "")
+    fake.put("sespy_app/__init__.py", '__version__ = "1.0.0"\n')
+    fake.put("sespy_app/logs/feedback.db", LIVE_DB)
+    fake.put("sespy_app.retired/logs/feedback.db", STRAY_DB)
+    before = _server_snapshot(fake)
+    cp = _rollback(fake, mono, "--run", STUB_MONO_APPLY="0")
+    assert cp.returncode != 0, fake.out
+    assert "sespy_app.retired" in fake.out, fake.out
+    assert _server_snapshot(fake) == before
+
+
+@pytest.mark.parametrize("var, value", [
+    ("DEPLOY_DIR", "relative/dir"),
+    ("DEPLOY_DIR", "/srv/a b"),
+    ("DEPLOY_DIR", "/srv/x'y"),
+    ("DEPLOY_DIR", "/srv/$(id)"),
+    ("DEPLOY_DIR", ""),
+    ("DEPLOY_DIR", "/srv/shiny-server/../SESPy"),
+    ("DEPLOY_DIR", "/srv/./SESPy"),
+    ("DEPLOY_DIR", "/srv/shiny-server/.."),
+    ("DEPLOY_MOSAIC_DIR", "/srv/mosaic dir"),
+    ("DEPLOY_MOSAIC_DIR", "/srv/shiny-server/../MosaicSES"),
+])
+def test_rollback_rejects_unsafe_server_paths(fake, var, value):
+    """M1: the paths are single-quoted into a remote command that runs rm -rf,
+    and cd must land exactly there: odd characters and . / .. segments are
+    refused before any remote call. (An empty value goes in via a prelude: a
+    Windows env block may not carry it.)"""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    _split_with_live_store(fake)
+    before = _server_snapshot(fake)
+    if value == "":
+        cp = _rollback(fake, mono, "--run", _prelude=f"export {var}=")
+    else:
+        cp = _rollback(fake, mono, "--run", **{var: value})
+    assert cp.returncode != 0, fake.out
+    assert var in fake.out, fake.out
+    assert fake.calls("mono") == [] and fake.calls("ssh") == [] and fake.calls("scp") == []
+    assert _server_snapshot(fake) == before
+
+
+@pytest.mark.parametrize("app_dir, mosaic_dir", [
+    ("/srv/shiny-server/SESPy", "/srv/shiny-server/MosaicSES"),
+    ("/srv/shiny-server/SESPy..v1_x-2", ""),
+])
+def test_rollback_accepts_normal_server_paths(fake, app_dir, mosaic_dir):
+    """M1 positive: ordinary paths (and '..' inside a name, which is not a
+    segment) pass the guard; print-only mode shows them and calls nothing."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    cp = _rollback(fake, mono, DEPLOY_DIR=app_dir, DEPLOY_MOSAIC_DIR=mosaic_dir) if mosaic_dir \
+        else _rollback(fake, mono, DEPLOY_DIR=app_dir)
+    _ok(cp, fake)
+    assert f"cd '{app_dir}'" in fake.out, fake.out
+    if mosaic_dir:
+        assert f"touch '{mosaic_dir}/restart.txt'" in fake.out
+    assert fake.log_lines() == []
+
+
+@pytest.mark.parametrize("mode", ["print", "run"])
+def test_rollback_warns_when_monolith_tree_has_config_env(fake, mode):
+    """M3: a config.env in the monolith tree overrides the exported values
+    inside the v1.17.x script; it is checked for existence only and warned
+    about in both modes."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    _write_lf(mono / "deploy" / "config.env", "")
+    assert _git(mono, "status", "--porcelain") == ""
+    _split_with_live_store(fake)
+    cp = _rollback(fake, mono, *(["--run"] if mode == "run" else []))
+    _ok(cp, fake)
+    assert "WARNING" in fake.out and f"{_posix(mono)}/deploy/config.env exists" in fake.out, fake.out
+    assert "same server and dir" in fake.out
+
+
+def test_rollback_without_config_env_in_monolith_tree_does_not_warn(fake):
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    _split_with_live_store(fake)
+    _ok(_rollback(fake, mono), fake)
+    assert "config.env exists" not in fake.out
+
+
+def test_deploy_refuses_interrupted_monolith_rollback(fake):
+    """A rollback chain that died after retiring sespy_app/ leaves the live
+    store in sespy_app.retired/logs. A deploy then must not start an empty
+    store: it aborts before any upload or rename, changing nothing."""
+    fake.put("sespy/__init__.py", '__version__ = "1.17.1"\n')
+    fake.put("sespy/modules/legacy_view.py", "monolith UI")
+    fake.put("sespy_app.retired/__init__.py", '__version__ = "1.0.0"\n')
+    fake.put("sespy_app.retired/logs/feedback.db", LIVE_DB)
+    before = _server_snapshot(fake)
+    cp = fake.run()
+    assert cp.returncode != 0, fake.out
+    assert "rollback_to_monolith.sh --run" in fake.out and "interrupted" in fake.out, fake.out
+    # no upload at all (the live pre-flight may have fetched reference data)
+    assert fake.incoming_scps() == []
+    assert [c for c in fake.calls("scp") if c.split()[-1].startswith(f"{SERVER}:")] == []
+    assert not any(SWAP_APP in c or SWAP_LIB in c for c in fake.calls("ssh"))
+    assert _server_snapshot(fake) == before
