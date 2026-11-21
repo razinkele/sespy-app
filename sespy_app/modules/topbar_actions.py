@@ -251,8 +251,11 @@ from the navigation at any time.
 | Get Started | Recent Projects |
 | Create SES | Templates, SES Wizard, Edit Data, Rate Connections, Import Data |
 | Visualize | CLD Visualization |
-| Analyze | Loop Analysis, Network Metrics, Leverage Points, Factor Quadrant, Boolean & Laplacian, Dynamic Simulation, Behaviour Over Time, Intervention, Simplify Network |
-| Report | Export Report |
+""" + (
+    "| Analyze | Loop Analysis, Network Metrics, Leverage Points, Factor Quadrant, "
+    "Boolean & Laplacian, Dynamic Simulation, Behaviour Over Time, Intervention, "
+    "Simplify Network |\n"
+) + """| Report | Export Report |
 
 **Where to look next.** The *Manual* tab of this dialog walks through every
 panel, explains the science behind each analysis and lists the literature
@@ -288,7 +291,7 @@ def _about_modal(translator, *, snapshot: Snapshot | None = None) -> ui.Tag:
         f"### MarineSABRES SES Toolbox — Python\n\n"
         f"**{_app_version()}** — developed within the "
         f"[MarineSABRES](https://marinesabres.eu) Horizon Europe project. "
-        f"[Source](https://github.com/razinkele/SESPy). MIT licensed."
+        f"[Source](https://github.com/razinkele/sespy-app). MIT licensed."
     )
     return ui.modal(
         ui.navset_tab(

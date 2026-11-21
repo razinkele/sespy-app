@@ -47,7 +47,7 @@ def test_alc_translation_keys_exist_in_every_language():
     for key in ("leverage.caption", "leverage.alc_truncated"):
         assert key in tr, f"{key} does not resolve through load_translations"
         assert langs.issubset(set(tr[key])), f"{key} is missing languages"
-        assert all(tr[key][l].strip() for l in langs), f"{key} has an empty value"
+        assert all(tr[key][lang].strip() for lang in langs), f"{key} has an empty value"
 
 
 def test_promotion_actually_fires_on_the_sample_project():

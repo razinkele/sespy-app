@@ -9,10 +9,13 @@ import re
 import subprocess
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 PATTERN = re.compile(
     r"sespy\.(modules|dashboard|event_bus|browser_token|feedback_store|ui_i18n|ui_r_kb)\b"
+    r"|from sespy import [^\n]*\b(modules|dashboard|event_bus|browser_token|feedback_store|ui_i18n|ui_r_kb)\b"
     r"|sespy/(www|logs|modules|translations)"
     r"|/ ?\"sespy\""
     r"|\"sespy\" ?/"
@@ -46,3 +49,15 @@ def test_no_monolith_strings():
             if PATTERN.search(line):
                 hits.append(f"{rel}:{n}: {line.strip()[:100]}")
     assert not hits, "monolith paths remain:\n" + "\n".join(hits)
+
+
+@pytest.mark.parametrize(
+    "line, should_match",
+    [
+        ("from sespy import feedback_store", True),
+        ("from sespy import data_structure, modules", True),
+        ("from sespy import data_structure", False),
+    ],
+)
+def test_pattern_self_check(line, should_match):
+    assert bool(PATTERN.search(line)) is should_match

@@ -32,4 +32,4 @@ def test_hypermodules_translation_keys_resolve():
                 "metrics.hypermodules_caption"):
         assert key in tr, f"{key} does not resolve"
         assert langs.issubset(set(tr[key])), f"{key} missing languages"
-        assert all(tr[key][l].strip() for l in langs), f"{key} empty value"
+        assert all(tr[key][lang].strip() for lang in langs), f"{key} empty value"

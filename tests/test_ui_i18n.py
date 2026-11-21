@@ -14,7 +14,6 @@ import sespy_app.i18n as u
 from sespy_app.i18n import Translator, get_default, load_translations, set_default, t
 
 ROOT = Path(__file__).resolve().parents[1]
-TRANSLATIONS = TRANSLATIONS
 
 
 @pytest.fixture(scope="module")
