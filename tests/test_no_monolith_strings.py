@@ -22,13 +22,17 @@ PATTERN = re.compile(
 )
 ROOTS = ["sespy_app", "app.py", "tests", ".github", "pyproject.toml", "deploy"]
 # Deliberate exceptions: deploy.sh and its test carry the old-layout `sespy/logs`
-# migration; CHANGELOG narrates history; this file defines the pattern.
+# migration; CHANGELOG narrates history; this file defines the pattern; the
+# rollback to the monolith script and its runbook restore sespy/modules and
+# sespy/logs.
 EXCLUDED = {
     "tests/test_no_monolith_strings.py",
     "tests/conftest.py",  # its guard message names the monolith module
     "CHANGELOG.md",
     "deploy/deploy.sh",
     "tests/test_deploy_script.py",
+    "deploy/rollback_to_monolith.sh",
+    "deploy/ROLLBACK.md",
 }
 
 

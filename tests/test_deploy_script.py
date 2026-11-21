@@ -231,7 +231,7 @@ class Fake:
     def _env(self) -> dict[str, str]:
         env = dict(os.environ)
         for k in ("DEPLOY_REPO_ROOT", "DEPLOY_LIBRARY_ROOT", "DEPLOY_MOSAIC_DIR", "DEPLOY_SUDO_TEST",
-                  "SESPY_SKIP_LIVE_CHECK", "STUB_EXIT", "SESPY_R_DATA_DIR"):
+                  "SESPY_SKIP_LIVE_CHECK", "STUB_EXIT", "SESPY_R_DATA_DIR", "MONOLITH_ROOT"):
             env.pop(k, None)
         env.update(
             DEPLOY_SERVER=SERVER,
@@ -292,12 +292,16 @@ class Fake:
         self.settings(f"SESPY_R_DATA_DIR={self.live_posix}\n")
 
     # -- run ---------------------------------------------------------------
-    def run(self, *args: str, _prelude: str = "", **env: str) -> subprocess.CompletedProcess:
+    def run(self, *args: str, _prelude: str = "", _script: str = "deploy.sh",
+            _drop: tuple[str, ...] = (), **env: str) -> subprocess.CompletedProcess:
         """`_prelude` runs in bash before exec'ing the script (e.g. to export a
-        set-but-empty variable, which a Windows env block may not carry)."""
+        set-but-empty variable, which a Windows env block may not carry).
+        `_script` names the deploy/ script to run; `_drop` removes env keys."""
         e = dict(self.env)
         e.update(env)
-        script = _posix(self.repo / "deploy" / "deploy.sh")
+        for k in _drop:
+            e.pop(k, None)
+        script = _posix(self.repo / "deploy" / _script)
         cmd = ([BASH, "-c", _prelude + '\nexec "$BASH" "$0" "$@"', script, *args]
                if _prelude else [BASH, script, *args])
         cp = subprocess.run(cmd, env=e, capture_output=True, text=True, timeout=180)
@@ -1330,3 +1334,239 @@ def test_old_restored_when_stray_dir_has_no_init(fake):
     assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == app_db
     everything = {p.read_bytes() for p in fake.app.rglob("*") if p.is_file()}
     assert {app_db, stray_db} <= everything, "a feedback store was deleted"
+
+
+# ---------------------------------------------------------------------------
+# deploy/rollback_to_monolith.sh (plan 4 Task 2): roll production back from the
+# split layout to the SESPy v1.17.x monolith. The monolith checkout is a fake
+# git repo tagged v1.17.1 whose deploy/deploy.sh is a stub: it logs its env and
+# args, and (unless told otherwise) applies the monolith layout to the fake
+# server the way a real v1.17.1 redeploy plus a first monolith request would:
+# sespy/ becomes the monolith (modules/) with a fresh sespy/logs/feedback.db.
+# It never touches restart.txt, so those assertions are about the chain.
+
+STUB_MONO_DEPLOY = """#!/usr/bin/env bash
+printf 'mono server=%s dir=%s repo=%s mosaic=%s args=%s\\n' \\
+  "${DEPLOY_SERVER:-}" "${DEPLOY_DIR:-}" "${DEPLOY_REPO_ROOT:-}" "${DEPLOY_MOSAIC_DIR:-}" "$*" >> "$STUB_LOG"
+[ "${STUB_MONO_EXIT:-0}" = 0 ] || exit "$STUB_MONO_EXIT"
+if [ "${STUB_MONO_APPLY:-1}" = 1 ]; then
+  cd "$DEPLOY_DIR" || exit 9
+  rm -rf sespy && mkdir -p sespy/modules sespy/logs || exit 9
+  printf '__version__ = "1.17.1"\\n' > sespy/__init__.py
+  : > sespy/modules/__init__.py
+  printf 'FRESH-MONOLITH-DB' > sespy/logs/feedback.db
+  printf 'print("monolith app")\\n' > app.py
+fi
+exit 0
+"""
+
+ROLLBACK = "rollback_to_monolith.sh"
+LIVE_DB = b"SQLite format 3\x00" + b"LIVE-STORE-ROW" * 150
+LIVE_WAL = b"LIVE-WAL" * 40
+LIVE_SHM = b"LIVE-SHM" * 20
+CHAIN_MV = "mv -T sespy_app/logs sespy/logs"
+
+
+def _build_mono(path: Path, *, tag: str = "v1.17.1", modules: bool = True) -> Path:
+    _write_lf(path / "sespy" / "__init__.py", '__version__ = "1.17.1"\n')
+    if modules:
+        _write_lf(path / "sespy" / "modules" / "__init__.py", "")
+    _write_lf(path / "deploy" / "deploy.sh", STUB_MONO_DEPLOY)
+    _write_lf(path / ".gitignore", "deploy/config.env\n")
+    _git(path, "init", "-q")
+    _git(path, "config", "core.autocrlf", "false")
+    _git(path, "add", "-A")
+    _git(path, "commit", "-q", "-m", "monolith")
+    _git(path, "tag", tag)
+    return path
+
+
+def _with_rollback(fake: Fake) -> Fake:
+    _copy_lf(ROOT / "deploy" / ROLLBACK, fake.repo / "deploy" / ROLLBACK)
+    return fake
+
+
+def _mosaic(fake: Fake) -> Path:
+    m = fake.server / "mosaic"
+    m.mkdir(parents=True, exist_ok=True)
+    return m
+
+
+def _split_with_live_store(fake: Fake) -> None:
+    fake.new_layout(db=LIVE_DB, wal=LIVE_WAL)
+    fake.put("sespy_app/logs/feedback.db-shm", LIVE_SHM)
+    fake.put("app.py", "from sespy_app.app import app\n")
+
+
+def _server_snapshot(fake: Fake) -> dict[str, bytes]:
+    return {p.relative_to(fake.server).as_posix(): p.read_bytes()
+            for p in fake.server.rglob("*") if p.is_file()}
+
+
+def _rollback(fake: Fake, mono: Path | str | None, *args: str, **kw) -> subprocess.CompletedProcess:
+    env = {}
+    if mono is not None:
+        env["MONOLITH_ROOT"] = mono if isinstance(mono, str) else _posix(mono)
+    return fake.run(*args, _script=ROLLBACK, **env, **kw)
+
+
+def test_rollback_bash_syntax():
+    cp = subprocess.run([BASH, "-n", _posix(ROOT / "deploy" / ROLLBACK)], capture_output=True, text=True)
+    assert cp.returncode == 0, cp.stderr
+
+
+def test_rollback_chain_restores_monolith_layout(fake):
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    mosaic = _mosaic(fake)
+    _split_with_live_store(fake)
+    cp = _rollback(fake, mono, "--run", DEPLOY_MOSAIC_DIR=_posix(mosaic))
+    _ok(cp, fake)
+    monos = fake.calls("mono")
+    assert monos == [f"mono server={SERVER} dir={fake.app_posix} repo={_posix(mono)} "
+                     f"mosaic={_posix(mosaic)} args=--rollback"], fake.log_lines()
+    # the live store (with its sidecars) is the monolith's store again
+    logs = fake.app / "sespy" / "logs"
+    assert (logs / "feedback.db").read_bytes() == LIVE_DB
+    assert (logs / "feedback.db-wal").read_bytes() == LIVE_WAL
+    assert (logs / "feedback.db-shm").read_bytes() == LIVE_SHM
+    # the monolith's fresh DB is set aside, not deleted
+    rescued = _rescued(fake)
+    assert len(rescued) == 1, rescued
+    assert (rescued[0] / "feedback.db").read_bytes() == b"FRESH-MONOLITH-DB"
+    assert not (fake.app / "sespy_app").exists()
+    assert (fake.app / "sespy" / "modules" / "__init__.py").is_file()
+    assert (fake.app / "restart.txt").is_file()
+    assert (mosaic / "restart.txt").is_file()
+    chain = fake.calls("ssh")
+    assert len(chain) == 1 and CHAIN_MV in chain[0], chain
+    assert f"touch '{fake.app_posix}/restart.txt'" in chain[0]
+    assert f"touch '{_posix(mosaic)}/restart.txt'" in chain[0]
+
+
+def test_rollback_chain_refuses_without_monolith(fake):
+    """The monolith deploy 'succeeded' but sespy/modules is absent (the v1.17.1
+    redeploy did not happen): the chain stops before touching anything."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    mosaic = _mosaic(fake)
+    _split_with_live_store(fake)
+    before = _server_snapshot(fake)
+    cp = _rollback(fake, mono, "--run", DEPLOY_MOSAIC_DIR=_posix(mosaic), STUB_MONO_APPLY="0")
+    assert cp.returncode != 0, fake.out
+    assert len(fake.calls("mono")) == 1
+    chain = fake.calls("ssh")
+    assert len(chain) == 1 and "[ -d sespy/modules ]" in chain[0], chain
+    assert "sespy/modules" in fake.out
+    assert _server_snapshot(fake) == before
+    assert not (fake.app / "restart.txt").exists() and not (mosaic / "restart.txt").exists()
+
+
+def test_rollback_stops_when_monolith_deploy_fails(fake):
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    _split_with_live_store(fake)
+    before = _server_snapshot(fake)
+    cp = _rollback(fake, mono, "--run", STUB_MONO_EXIT="1")
+    assert cp.returncode != 0, fake.out
+    monos = fake.calls("mono")
+    assert len(monos) == 1 and monos[0].endswith("args=--rollback"), monos
+    assert fake.calls("ssh") == [] and fake.calls("scp") == []
+    assert _server_snapshot(fake) == before
+    assert "monolith" in fake.out.lower() and "chain" in fake.out.lower(), fake.out
+
+
+def _bad_root(fake: Fake, case: str) -> tuple[str | None, str]:
+    """A MONOLITH_ROOT that is wrong in exactly one way; returns (value, reason)."""
+    if case == "unset":
+        _build_mono(fake.base / "mono")
+        return None, "not set"
+    if case == "relative":
+        mono = _build_mono(fake.base / "mono")
+        rel = os.path.relpath(mono, os.getcwd()).replace("\\", "/")
+        assert not rel.startswith("/") and (Path(os.getcwd()) / rel / "sespy" / "modules").is_dir()
+        return rel, "not an absolute path"
+    if case == "no_modules":
+        return _posix(_build_mono(fake.base / "mono", modules=False)), "sespy/modules"
+    if case == "off_tag":
+        mono = _build_mono(fake.base / "mono")
+        _write_lf(mono / "later.txt", "after the tag\n")
+        _git(mono, "add", "later.txt")
+        _git(mono, "commit", "-q", "-m", "after the tag")
+        assert _git(mono, "status", "--porcelain") == ""
+        return _posix(mono), "v1.17."
+    if case == "dirty":
+        mono = _build_mono(fake.base / "mono")
+        _write_lf(mono / "untracked.txt", "dirt\n")
+        return _posix(mono), "not clean"
+    raise AssertionError(case)
+
+
+@pytest.mark.parametrize("case", ["unset", "relative", "no_modules", "off_tag", "dirty"])
+def test_rollback_rejects_bad_monolith_root(fake, case):
+    _with_rollback(fake)
+    _split_with_live_store(fake)
+    before = _server_snapshot(fake)
+    value, reason = _bad_root(fake, case)
+    cp = _rollback(fake, value, "--run")
+    assert cp.returncode != 0, fake.out
+    assert "MONOLITH_ROOT" in fake.out and reason in fake.out, fake.out
+    assert fake.calls("mono") == [] and fake.calls("ssh") == [] and fake.calls("scp") == []
+    assert _server_snapshot(fake) == before
+
+
+def test_rollback_aborts_without_server_config(fake):
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    assert not (fake.repo / "deploy" / "config.env").exists()
+    cp = _rollback(fake, mono, "--run", _drop=("DEPLOY_SERVER", "DEPLOY_DIR"))
+    assert cp.returncode != 0, fake.out
+    assert "DEPLOY_SERVER" in fake.out and "DEPLOY_DIR" in fake.out, fake.out
+    assert fake.calls("mono") == [] and fake.calls("ssh") == []
+
+
+def test_rollback_exports_app_config_env(fake):
+    """The app's deploy/config.env is sourced and its server values exported:
+    a fresh v1.17.1 worktree has no config.env of its own."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    mosaic = _mosaic(fake)
+    _write_lf(fake.repo / "deploy" / "config.env",
+              f"DEPLOY_SERVER={SERVER}\nDEPLOY_DIR={fake.app_posix}\nDEPLOY_MOSAIC_DIR={_posix(mosaic)}\n")
+    _split_with_live_store(fake)
+    cp = _rollback(fake, mono, "--run", _drop=("DEPLOY_SERVER", "DEPLOY_DIR", "DEPLOY_MOSAIC_DIR"))
+    _ok(cp, fake)
+    assert fake.calls("mono") == [f"mono server={SERVER} dir={fake.app_posix} repo={_posix(mono)} "
+                                  f"mosaic={_posix(mosaic)} args=--rollback"], fake.log_lines()
+    assert (mosaic / "restart.txt").is_file()
+    assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == LIVE_DB
+
+
+def test_rollback_without_run_only_prints(fake):
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    _split_with_live_store(fake)
+    before = _server_snapshot(fake)
+    cp = _rollback(fake, mono)
+    _ok(cp, fake)
+    assert "deploy.sh --rollback" in fake.out and CHAIN_MV in fake.out, fake.out
+    assert "--run" in fake.out
+    assert fake.log_lines() == []
+    assert _server_snapshot(fake) == before
+
+
+def test_rollback_chain_rerun_keeps_live_store(fake):
+    """A rerun after the chain died between moving the logs and removing
+    sespy_app/ (or with no app store at all) keeps sespy/logs as the store and
+    finishes; a second rerun is a no-op that still exits 0."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    fake.put("sespy/__init__.py", '__version__ = "1.17.1"\n')
+    fake.put("sespy/modules/__init__.py", "")
+    fake.put("sespy/logs/feedback.db", LIVE_DB)
+    fake.put("sespy_app/__init__.py", '__version__ = "1.0.0"\n')
+    for _ in range(2):
+        _ok(_rollback(fake, mono, "--run", STUB_MONO_APPLY="0"), fake)
+        assert (fake.app / "sespy" / "logs" / "feedback.db").read_bytes() == LIVE_DB
+        assert _rescued(fake) == []
+        assert not (fake.app / "sespy_app").exists()
