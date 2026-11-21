@@ -6,6 +6,19 @@ From 1.0.0 this is the sespy-app changelog; earlier entries are SESPy's (the app
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-11-21
+
+Deploy hardening for the split cutover; no user-visible change.
+
+### Fixed
+- `deploy.sh`: a re-run now finishes a half-done cutover (a stray monolith `sespy/logs` is set aside instead of aborting).
+- `deploy.sh`: the library is staged with `git archive v$PIN`, so only tracked files ship.
+- `deploy.sh`: `.old` is restored over a non-package directory.
+- `deploy.sh`: refuses to run while `sespy_app.retired` exists (an interrupted rollback).
+
+### Added
+- `deploy/rollback_to_monolith.sh` and `deploy/ROLLBACK.md`: a tested rollback to the monolith 1.17.x. It renames first and never deletes a feedback store.
+
 ## [1.0.0] — 2026-11-20
 
 The app moved out of the SESPy repository into its own (`sespy_app` package, `app.py`, tests, deploy script, manual). It depends on the `sespy` library v1.18.0 for the analysis code, data structures, translations and reference data. About shows both versions: the app and the library. No user-visible behaviour change.
