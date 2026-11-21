@@ -991,8 +991,10 @@ def test_cutover_moves_feedback_db_once(fake):
 
 
 def test_two_feedback_dbs_abort_before_swap(fake):
+    """The genuine old layout (no sespy_app/__init__.py) with a second store:
+    only a human can merge them. With sespy_app/__init__.py installed it is a
+    half-done cutover instead (test_half_cutover_rerun_completes)."""
     fake.old_layout(db=b"MONOLITH-DB")
-    fake.put("sespy_app/__init__.py", "app")
     fake.put("sespy_app/logs/feedback.db", b"APP-DB")
     cp = fake.run()
     assert cp.returncode != 0
@@ -1238,3 +1240,93 @@ def test_stray_sespy_logs_in_new_layout_is_rescued(fake, content):
     else:
         assert (rescued[0] / "feedback.db").read_bytes() == content
     assert (fake.app / "restart.txt").is_file(), "the deploy continued"
+
+
+# plan 4 pre-cutover hardening (plan-3 final review M1 and the T6 items)
+# ---------------------------------------------------------------------------
+def test_half_cutover_rerun_completes(fake):
+    """M1: the cutover chain died right after the sespy_app pair. The new
+    sespy_app/ holds the migrated store, the monolith sespy/ and the old
+    app.py stay live, and a Feedback open recreated sespy/logs. The rerun
+    moves that newer store aside (never a two-stores abort) and finishes."""
+    migrated = {"feedback.db": b"SQLite format 3\x00" + b"MIGRATED-ROWS" * 200,
+                "feedback.db-wal": b"MIGRATED-WAL" * 30,
+                "feedback.db-shm": b"MIGRATED-SHM" * 10}
+    fresh = {"feedback.db": b"SQLite format 3\x00" + b"FRESH-MONOLITH" * 5,
+             "feedback.db-wal": b"FRESH-WAL" * 7,
+             "feedback.db-shm": b"FRESH-SHM" * 3}
+    fake.old_layout()
+    fake.put("app.py", "print('old app')\n")
+    fake.put("sespy_app/__init__.py", '__version__ = "1.0.0"\n')
+    fake.put("sespy_app/views.py", "new app code")
+    for name, data in migrated.items():
+        fake.put(f"sespy_app/logs/{name}", data)
+    for name, data in fresh.items():
+        fake.put(f"sespy/logs/{name}", data)
+    # what the dying run had already uploaded
+    fake.put("sespy.incoming/__init__.py", "uploaded library")
+    fake.put("app.py.incoming", "print('uploaded app')\n")
+    _ok(fake.run(), fake)
+    assert "two feedback stores" not in fake.out
+    assert not (fake.app / "sespy" / "modules").exists()
+    assert (fake.app / "sespy" / "__init__.py").read_text() == (fake.lib / "sespy" / "__init__.py").read_text()
+    assert not (fake.app / "sespy" / "logs").exists()
+    for name, data in migrated.items():
+        assert (fake.app / "sespy_app" / "logs" / name).read_bytes() == data, name
+    rescued = _rescued(fake)
+    assert len(rescued) == 1
+    for name, data in fresh.items():
+        assert (rescued[0] / name).read_bytes() == data, name
+    assert "WARNING" in fake.out and rescued[0].name in fake.out
+    assert (fake.app / "app.py").read_text() == "print('app')\n"
+    assert (fake.app / "restart.txt").is_file()
+
+
+def test_library_staged_from_tag_only(fake):
+    """T6: the library is staged with git archive of the pinned tag, so an
+    ignored file under the checkout's sespy/ (invisible to git status
+    --porcelain) never ships."""
+    lib = fake.lib
+    gitignore = lib / ".gitignore"
+    _write_lf(gitignore, gitignore.read_text(encoding="utf-8") + "scratch.db\n")
+    _git(lib, "add", ".gitignore")
+    _git(lib, "commit", "-q", "-m", "ignore scratch.db")
+    _git(lib, "tag", "-f", f"v{PIN}")
+    _write_lf(lib / "sespy" / "scratch.db", "SCRATCH")
+    _write_lf(lib / "sespy" / "__pycache__" / "x.cpython-312.pyc", "BYTECODE")
+    assert _git(lib, "status", "--porcelain") == ""
+    prelude = ('mv() { if [ "$*" = "-T sespy.incoming sespy" ]; then '
+               'cp -r sespy.incoming "$STUB_DIR/seen_incoming"; fi; command mv "$@"; }')
+    _ok(fake.run(STUB_SSH_PRELUDE=prelude), fake)
+    seen = fake.stubs / "seen_incoming"
+    assert seen.is_dir(), "the uploaded sespy.incoming was not captured"
+    assert not (seen / "scratch.db").exists()
+    got = sorted("sespy/" + p.relative_to(seen).as_posix() for p in seen.rglob("*") if p.is_file())
+    want = sorted(ln for ln in _git(lib, "ls-tree", "-r", "--name-only", f"v{PIN}", "sespy").splitlines() if ln)
+    assert want and got == want
+    assert not any("/logs/" in p or "__pycache__" in p for p in got)
+
+
+def test_old_restored_when_stray_dir_has_no_init(fake):
+    """T6: a swap died between the sespy pair's renames and an old worker then
+    recreated a bare sespy/ holding only logs/. The prologue sets those logs
+    aside, removes the empty dir and restores sespy.old, deleting no store."""
+    app_db = b"SQLite format 3\x00" + b"APP-ROWS" * 120
+    stray_db = b"STRAY-WORKER-ROW" * 20
+    fake.put("sespy_app/__init__.py", '__version__ = "1.0.0"\n')
+    fake.put("sespy_app/logs/feedback.db", app_db)
+    fake.put("sespy.old/__init__.py", '__version__ = "1.17.9"\n')
+    fake.put("sespy.old/core.py", "old library")
+    fake.put("sespy/logs/feedback.db", stray_db)
+    prelude = ('mv() { command mv "$@" || return; '
+               'if [ "$*" = "-T sespy.old sespy" ]; then : > "$STUB_DIR/restored"; fi; }')
+    _ok(fake.run(STUB_SSH_PRELUDE=prelude), fake)
+    assert (fake.stubs / "restored").exists(), "sespy.old was not restored over the stray dir"
+    rescued = _rescued(fake)
+    assert len(rescued) == 1
+    assert (rescued[0] / "feedback.db").read_bytes() == stray_db
+    assert (fake.app / "sespy" / "__init__.py").is_file()
+    assert not (fake.app / "sespy.old").exists()
+    assert (fake.app / "sespy_app" / "logs" / "feedback.db").read_bytes() == app_db
+    everything = {p.read_bytes() for p in fake.app.rglob("*") if p.is_file()}
+    assert {app_db, stray_db} <= everything, "a feedback store was deleted"
