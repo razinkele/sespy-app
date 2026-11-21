@@ -18,7 +18,8 @@ tests, or in the NEW layout (``sespy/`` library + ``sespy_app/`` holding
 
 The temp repo has NO ``deploy/config.env`` (the real one would be sourced
 after the env and point the run at the production host); only
-test_skip_var_in_config_env_is_ignored writes one, inside its own temp repo.
+test_skip_var_in_config_env_is_ignored and test_rollback_exports_app_config_env
+write one, each inside its own temp repo.
 """
 from __future__ import annotations
 
@@ -896,7 +897,8 @@ def test_empty_skip_var_counts_as_unset(fake):
 
 
 def test_skip_var_in_config_env_is_ignored(fake):
-    # The one test that writes a config.env, inside its own temp repo. It also
+    # One of the two tests that write a config.env (the other is
+    # test_rollback_exports_app_config_env), inside its own temp repo. It also
     # pins DEPLOY_LIBRARY_ROOT precedence: the env value beats config.env's
     # (so a rollback can pass an older library per run).
     _write_lf(fake.repo / "deploy" / "config.env",
@@ -1351,10 +1353,12 @@ printf 'mono server=%s dir=%s repo=%s mosaic=%s args=%s\\n' \\
 [ "${STUB_MONO_EXIT:-0}" = 0 ] || exit "$STUB_MONO_EXIT"
 if [ "${STUB_MONO_APPLY:-1}" = 1 ]; then
   cd "$DEPLOY_DIR" || exit 9
-  rm -rf sespy && mkdir -p sespy/modules sespy/logs || exit 9
+  rm -rf sespy && mkdir -p sespy/modules || exit 9
   printf '__version__ = "1.17.1"\\n' > sespy/__init__.py
   : > sespy/modules/__init__.py
-  printf 'FRESH-MONOLITH-DB' > sespy/logs/feedback.db
+  if [ "${STUB_MONO_FRESH:-1}" = 1 ]; then
+    mkdir -p sespy/logs && printf 'FRESH-MONOLITH-DB' > sespy/logs/feedback.db
+  fi
   printf 'print("monolith app")\\n' > app.py
 fi
 exit 0
@@ -1442,6 +1446,23 @@ def test_rollback_chain_restores_monolith_layout(fake):
     assert len(chain) == 1 and CHAIN_MV in chain[0], chain
     assert f"touch '{fake.app_posix}/restart.txt'" in chain[0]
     assert f"touch '{_posix(mosaic)}/restart.txt'" in chain[0]
+
+
+def test_rollback_chain_right_after_monolith_deploy(fake):
+    """The state Step 0 proved the real v1.17.1 script leaves: the monolith
+    sespy/ with NO sespy/logs yet, the live store still in sespy_app/logs.
+    The store moves back whole and nothing is set aside."""
+    _with_rollback(fake)
+    mono = _build_mono(fake.base / "mono")
+    _split_with_live_store(fake)
+    _ok(_rollback(fake, mono, "--run", STUB_MONO_FRESH="0"), fake)
+    logs = fake.app / "sespy" / "logs"
+    assert (logs / "feedback.db").read_bytes() == LIVE_DB
+    assert (logs / "feedback.db-wal").read_bytes() == LIVE_WAL
+    assert (logs / "feedback.db-shm").read_bytes() == LIVE_SHM
+    assert _rescued(fake) == []
+    assert not (fake.app / "sespy_app").exists()
+    assert (fake.app / "restart.txt").is_file()
 
 
 def test_rollback_chain_refuses_without_monolith(fake):
