@@ -186,8 +186,8 @@ def test_sensitivity_rows_percentages():
     rows = sensitivity_rows(SENS, LABELS)
     assert rows == [
         {"route": "Alpha → Delta", "rank": "73", "polarity": "88",
-         "survival": "100"},
-        {"route": "Alpha → X → Delta", "rank": "0", "polarity": "0",
+         "survival": ">99"},
+        {"route": "Alpha → X → Delta", "rank": "0", "polarity": "<1",
          "survival": "100"},
     ]
     assert sensitivity_rows({"paths": []}, LABELS) == []
@@ -208,3 +208,34 @@ def test_fragile_text_none_when_empty():
 
     assert fragile_text({**SENS, "fragile_edges": []}, LABELS) == (
         "No single link's uncertainty clearly changes the top route.")
+
+
+def test_sensitivity_percent_edges_never_round_to_0_or_100():
+    # A route that drops out in 2 of 500 draws must not read as never
+    # dropping; only exact 0 and 1 print as "0" and "100".
+    from sespy_app.modules._paths_view import sensitivity_rows
+
+    def one(p):
+        sens = {"paths": [{"path": ["A", "D"], "polarity": "+", "score": 1.0,
+                           "rank_probability": p, "polarity_probability": p,
+                           "survival_probability": p}]}
+        return sensitivity_rows(sens, LABELS)[0]["rank"]
+
+    assert one(0.0) == "0"
+    assert one(1.0) == "100"
+    assert one(0.002) == "<1"
+    assert one(0.004) == "<1"
+    assert one(0.996) == ">99"
+    assert one(0.998) == ">99"
+    assert one(0.01) == "1"
+    assert one(0.99) == "99"
+    assert one(0.734) == "73"
+
+
+def test_sensitivity_partial_notice_only_when_truncated():
+    from sespy_app.modules._paths_view import sensitivity_partial_notice
+
+    assert sensitivity_partial_notice(SENS) is None
+    assert sensitivity_partial_notice({**SENS, "truncated": True}) == (
+        "Ranked among the first 2 paths found; "
+        "a stronger path may exist beyond them.")

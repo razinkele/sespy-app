@@ -335,3 +335,21 @@ def test_isa_change_drops_in_flight_run(monkeypatch):
         html = _sens(scope)
     assert not _has_table(html), html
     assert CAPTION not in html
+
+
+def test_truncated_result_shows_partial_notice_above_table(monkeypatch):
+    def truncated(*args, **kw):
+        return {**_fake(*args, **kw), "truncated": True}
+
+    _spy(monkeypatch, impl=truncated)
+    h = Harness()
+    with test_server(h.server, timeout_secs=90) as ts:
+        scope = _start(ts)
+        _trace(scope, A, B, 1)
+        scope.set_inputs(paths_sens_run=1)
+        _settle(ts, scope, _has_table)
+        html = _sens(scope)
+    notice = "Ranked among the first 2 paths found"
+    assert notice in html, html
+    assert html.index(notice) < html.index("<table")
+    assert "text-muted" in html[:html.index(notice)]

@@ -125,7 +125,26 @@ def summary_lines(result: dict, labels: dict[str, str]) -> list[str]:
 
 
 def _pct(p: float) -> str:
-    return f"{100.0 * float(p):.0f}"
+    # Only exact 0 and 1 print as "0" and "100": a route that drops out in
+    # 2 of 500 draws must not read as never dropping.
+    p = float(p)
+    if p == 0.0:
+        return "0"
+    if p == 1.0:
+        return "100"
+    if 0.0 < p < 0.01:
+        return "<1"
+    if 0.99 < p < 1.0:
+        return ">99"
+    return f"{100.0 * p:.0f}"
+
+
+def sensitivity_partial_notice(sens: dict) -> str | None:
+    """The partial-ranking line for a truncated baseline (the robustness
+    check only ranks the first paths found), else None."""
+    if not sens.get("truncated"):
+        return None
+    return t("metrics.paths_ranked_partial", n=len(sens.get("paths", [])))
 
 
 def sensitivity_rows(sens: dict, labels: dict[str, str]) -> list[dict]:

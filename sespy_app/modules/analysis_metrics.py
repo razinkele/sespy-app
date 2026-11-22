@@ -40,6 +40,7 @@ from sespy_app.i18n import Translator, t
 from sespy_app.modules._paths_view import (
     fragile_text,
     path_rows,
+    sensitivity_partial_notice,
     sensitivity_rows,
     summary_lines,
 )
@@ -586,10 +587,13 @@ def analysis_metrics_server(
             )
             for row in sensitivity_rows(s, labels)
         ]
+        partial = sensitivity_partial_notice(s)
         return ui.div(
             ui.p(t("metrics.paths_sens_caption", n=s["n_draws"], seed=s["seed"]),
                  class_="text-muted",
                  style="font-size: 0.85rem; margin-top: 0.5rem;"),
+            (None if partial is None else
+             ui.p(partial, class_="text-muted", style="font-size: 0.85rem;")),
             ui.tags.table(ui.tags.thead(header), ui.tags.tbody(*body),
                           class_="table table-sm"),
             ui.p(fragile_text(s, labels), class_="mb-1"),
