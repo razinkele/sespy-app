@@ -12,7 +12,7 @@ governance gaps, cascades, dynamic simulation, interventions, reports.
 This repository is the **app only**. The analysis code, data structures,
 translations, templates and reference data live in the
 [`sespy` library](https://github.com/razinkele/SESPy), which the app installs
-from a pinned tag (see `pyproject.toml`; currently `v1.18.0`). The app was
+from a pinned tag (see `pyproject.toml`; currently `v1.19.0`). The app was
 split out of `razinkele/SESPy` at v1.17.1 and restarted its own version line at
 1.0.0. The R app remains the source of truth for behaviour and schema.
 
