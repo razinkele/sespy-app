@@ -5,6 +5,7 @@ to all three modules at once.
 import asyncio
 import csv
 import io
+import re
 
 from _testmode import export_value, snapshot
 from playwright.async_api import async_playwright
@@ -316,6 +317,12 @@ async def main():
         assert len(csv_rows) == 2, f"expected 2 CSV data rows, got: {csv_rows!r}"
         assert all(r[3] == "-" for r in csv_rows), \
             f"expected two negative paths in CSV, got: {csv_rows!r}"
+        assert float(csv_rows[0][5]) >= float(csv_rows[1][5]), \
+            f"CSV rows not in score order: {csv_rows!r}"
+        assert all(r[14] == "False" for r in csv_rows), \
+            f"expected truncated=False, got: {csv_rows!r}"
+        assert all(r[1].startswith("ES02") and r[1].endswith("D001")
+                   for r in csv_rows), f"unexpected path_ids: {csv_rows!r}"
         print(f"paths CSV: OK ({download.suggested_filename}, {len(csv_rows)} rows)")
 
         # --- Robustness check: background task, then the table ---
@@ -326,8 +333,19 @@ async def main():
             "#metrics-paths_sensitivity table tbody tr").count()
         sens_err = await page.locator(
             "#metrics-paths_sensitivity .alert-danger").count()
-        assert sens_rows >= 1, f"expected robustness rows, got {sens_rows}"
         assert sens_err == 0, "robustness check rendered an error alert"
+        assert sens_rows == 2, f"expected 2 robustness rows, got {sens_rows}"
+        # Route, then three percentage cells (rank, keeps sign, survives).
+        # Rank cells need not sum to 100: a draw that drops both paths
+        # ranks neither.
+        sens_cells = await page.eval_on_selector_all(
+            "#metrics-paths_sensitivity table tbody tr",
+            "trs => trs.map(tr => Array.from(tr.querySelectorAll('td'))"
+            ".map(td => td.textContent.trim()))")
+        pct_re = re.compile(r"^(<1|>99|\d{1,3})$")
+        for cells in sens_cells:
+            assert len(cells) == 4 and all(pct_re.match(c) for c in cells[1:]), \
+                f"bad robustness cells: {sens_cells!r}"
         sens_text = (await page.inner_text("#metrics-paths_sensitivity")).strip()
         print(f"robustness check: OK ({sens_rows} rows; {sens_text[:120]!r})")
 
