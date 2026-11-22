@@ -158,3 +158,53 @@ def test_partial_ranking_line_when_truncated():
                          "a stronger path may exist beyond them.")
     not_trunc = summary_lines(_result([POS, NEG], truncated=False), LABELS)
     assert not any(s.startswith("Ranked among") for s in not_trunc)
+
+
+# ------------------------------------------------- robustness (Task 6) ---
+
+SENS = {
+    "n_draws": 500, "seed": 0, "base": 0.5, "flip_mode": "confidence",
+    "paths": [
+        {"path": ["A", "D"], "polarity": "+", "score": 0.55,
+         "rank_probability": 0.734, "polarity_probability": 0.876,
+         "survival_probability": 0.996},
+        {"path": ["A", "X", "D"], "polarity": "-", "score": 0.1,
+         "rank_probability": 0.0, "polarity_probability": 0.004,
+         "survival_probability": 1.0},
+    ],
+    "fragile_edges": [
+        {"source": "A", "target": "D", "share": 0.214, "lift": 0.3456},
+        {"source": "B", "target": "C", "share": 0.07, "lift": 0.0123},
+    ],
+    "truncated": False,
+}
+
+
+def test_sensitivity_rows_percentages():
+    from sespy_app.modules._paths_view import sensitivity_rows
+
+    rows = sensitivity_rows(SENS, LABELS)
+    assert rows == [
+        {"route": "Alpha → Delta", "rank": "73", "polarity": "88",
+         "survival": "100"},
+        {"route": "Alpha → X → Delta", "rank": "0", "polarity": "0",
+         "survival": "100"},
+    ]
+    assert sensitivity_rows({"paths": []}, LABELS) == []
+
+
+def test_fragile_text_lists_edges_in_library_order():
+    from sespy_app.modules._paths_view import fragile_text
+
+    s = fragile_text(SENS, LABELS)
+    assert s.startswith("Links whose uncertainty most often changes the top route: ")
+    assert "Alpha → Delta (share 21%, lift +0.35)" in s
+    assert "Beta → Gamma (share 7%, lift +0.01)" in s
+    assert s.index("Alpha → Delta") < s.index("Beta → Gamma")
+
+
+def test_fragile_text_none_when_empty():
+    from sespy_app.modules._paths_view import fragile_text
+
+    assert fragile_text({**SENS, "fragile_edges": []}, LABELS) == (
+        "No single link's uncertainty clearly changes the top route.")

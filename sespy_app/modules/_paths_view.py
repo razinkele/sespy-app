@@ -122,3 +122,33 @@ def summary_lines(result: dict, labels: dict[str, str]) -> list[str]:
     if result.get("truncated"):
         lines.append(t("metrics.paths_ranked_partial", n=n))
     return lines
+
+
+def _pct(p: float) -> str:
+    return f"{100.0 * float(p):.0f}"
+
+
+def sensitivity_rows(sens: dict, labels: dict[str, str]) -> list[dict]:
+    """One display dict per path of a `path_sensitivity` result, in its
+    (baseline) order. The probabilities become whole percentages without a
+    `%` sign; the column headers carry it."""
+    return [
+        {"route": _route(row["path"], labels),
+         "rank": _pct(row["rank_probability"]),
+         "polarity": _pct(row["polarity_probability"]),
+         "survival": _pct(row["survival_probability"])}
+        for row in sens.get("paths", [])
+    ]
+
+
+def fragile_text(sens: dict, labels: dict[str, str]) -> str:
+    """The fragile-links line: the result's `fragile_edges` in the library's
+    order, or the none line when the list is empty."""
+    edges = sens.get("fragile_edges") or []
+    if not edges:
+        return t("metrics.paths_sens_fragile_none")
+    shown = ", ".join(
+        f"{_label(labels, e['source'])} → {_label(labels, e['target'])}"
+        f" (share {_pct(e['share'])}%, lift {float(e['lift']):+.2f})"
+        for e in edges)
+    return t("metrics.paths_sens_fragile", edges=shown)
