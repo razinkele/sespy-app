@@ -3,6 +3,8 @@ and `event_bus.isa_change` (fired from project_io's New Project) propagates
 to all three modules at once.
 """
 import asyncio
+import csv
+import io
 
 from _testmode import export_value, snapshot
 from playwright.async_api import async_playwright
@@ -273,6 +275,61 @@ async def main():
         assert src_val == "ES02" and tgt_val == "D001", \
             f"selects reset after trace: {src_val!r} -> {tgt_val!r}"
         print(f"causal pathways block: OK ({pt_text[:120]!r})")
+
+        # --- Path diagnostics (sespy >= 1.20.0): scored table + summary ---
+        # Asserted BEFORE the robustness run: its table renders inside
+        # #metrics-paths_summary (output_ui "paths_sensitivity"), after
+        # which "table thead" would match two tables.
+        thead_text = (await page.inner_text(
+            "#metrics-paths_summary table thead")).strip()
+        assert "Score" in thead_text and "Weakest link" in thead_text, \
+            f"expected Score / Weakest link headers, got: {thead_text!r}"
+        assert "Strongest negative route:" in pt_text, \
+            f"expected strongest-negative line, got: {pt_text!r}"
+        print(f"path diagnostics headers: OK ({thead_text!r})")
+
+        # --- CSV download: click it and read the file ---
+        # A Shiny download button starts disabled with an empty href until
+        # the server registers the download URL.
+        await page.wait_for_selector("#metrics-paths_csv", state="visible",
+                                     timeout=30000)
+        await page.wait_for_function(
+            "() => { const a = document.getElementById('metrics-paths_csv');"
+            " return !!(a && !a.classList.contains('disabled')"
+            " && a.getAttribute('href')); }",
+            timeout=30000,
+        )
+        async with page.expect_download(timeout=30000) as dl_info:
+            await page.click("#metrics-paths_csv")
+        download = await dl_info.value
+        csv_path = await download.path()
+        with open(csv_path, encoding="utf-8", newline="") as fh:
+            csv_text = fh.read()
+        header_line = csv_text.splitlines()[0] if csv_text else ""
+        assert header_line == (
+            "rank,path_ids,path_labels,polarity,length,score,"
+            "bottleneck_source,bottleneck_target,bottleneck_strength,"
+            "bottleneck_confidence,delay_immediate,delay_short,delay_long,"
+            "min_confidence,truncated"), f"unexpected CSV header: {header_line!r}"
+        csv_rows = [r for r in csv.reader(io.StringIO(csv_text))][1:]
+        csv_rows = [r for r in csv_rows if r]
+        assert len(csv_rows) == 2, f"expected 2 CSV data rows, got: {csv_rows!r}"
+        assert all(r[3] == "-" for r in csv_rows), \
+            f"expected two negative paths in CSV, got: {csv_rows!r}"
+        print(f"paths CSV: OK ({download.suggested_filename}, {len(csv_rows)} rows)")
+
+        # --- Robustness check: background task, then the table ---
+        await page.click("#metrics-paths_sens_run")
+        await page.wait_for_selector(
+            "#metrics-paths_sensitivity table tbody tr", timeout=120000)
+        sens_rows = await page.locator(
+            "#metrics-paths_sensitivity table tbody tr").count()
+        sens_err = await page.locator(
+            "#metrics-paths_sensitivity .alert-danger").count()
+        assert sens_rows >= 1, f"expected robustness rows, got {sens_rows}"
+        assert sens_err == 0, "robustness check rendered an error alert"
+        sens_text = (await page.inner_text("#metrics-paths_sensitivity")).strip()
+        print(f"robustness check: OK ({sens_rows} rows; {sens_text[:120]!r})")
 
         await browser.close()
 
