@@ -1,13 +1,15 @@
-"""E2E for the Boolean / Laplacian module — happy path.
+"""E2E for the Boolean / Laplacian module — multi-attractor happy path.
 
-Companion to ``tests/test_boolean_e2e.py``. The default 17-node sample exceeds
-the 12-node Boolean attractor cap, so that test only exercises the warning
-branch. This test loads the ``Minimal Demo`` 5-node template (which is below
-the cap) and verifies that the attractor table renders with at least one row
-end-to-end:
+Companion to ``tests/test_boolean_e2e.py`` (the default sample's all-off
+result) and ``tests/test_boolean_sampled_e2e.py`` (the sampled fallback). This
+test loads the ``Minimal Demo`` 5-node template, whose whole network is its
+feedback core (a positive 3-cycle plus a mutually activating pair), and checks
+the exact feedback-core search end to end:
   - Eigenvalue plot still renders.
   - Stability summary populates.
-  - Boolean tab shows a populated ``<table>`` (no warning, no danger alert).
+  - Boolean tab shows the ``core_info`` line and a table with at least two
+    attractor rows (no warning, no danger alert). The search runs in a
+    background task, so the test waits for its result, not a fixed delay.
 """
 import asyncio
 
@@ -102,32 +104,25 @@ async def main():
         # Scope to this module's navset, never a bare text= match: every panel
         # shares one DOM, so a future label elsewhere would hijack this click.
         await page.click("#boolean-boolean_tabs a[data-value='Boolean attractors']")
-        # Wait for the attractor panel's reactive content instead of racing a
-        # fixed sleep. Deliberately a NEUTRAL any-content gate, not
-        # "table tbody tr": gating on the table would pre-empt the
-        # alert-warning assertion below, so a too-large warning regressed onto a
-        # 5-node network would die on an opaque selector timeout instead of
-        # failing with "unexpected too-large warning on a 5-node network".
-        # The placeholder clause is defensive only here (the Run click above
-        # already set result_store, so analysis_boolean.py:183 cannot render),
-        # but it keeps the gate correct if that order is ever reversed.
-        await page.wait_for_function(
-            "() => {"
-            "  const el = document.querySelector('#boolean-attractor_panel');"
-            "  if (!el) return false;"
-            "  const s = (el.textContent || '').trim();"
-            "  return s.length > 0 && !s.includes(\"Click 'Run analysis'\");"
-            "}",
-            timeout=15000,
+        # Wait for the background search's FINAL content, not a fixed sleep.
+        # Deliberately a neutral gate (a table row OR any alert), not
+        # "table tbody tr" alone: gating on the table would pre-empt the
+        # alert assertions below, so a warning regressed onto a 5-node network
+        # would die on an opaque selector timeout instead of failing with a
+        # clear message. The "Computing attractors…" and "Click 'Run
+        # analysis'" placeholders are bare <p>s and do not satisfy it.
+        await page.wait_for_selector(
+            "#boolean-attractor_panel table tbody tr, #boolean-attractor_panel .alert",
+            timeout=60000,
         )
 
-        # No too-large warning — we're below the 12-node cap.
+        # No warning: the 5-node core is far inside the exact limit.
         warning_count = await page.evaluate(
             "() => document.querySelectorAll('#boolean-attractor_panel .alert-warning').length"
         )
         print(f"alert-warning count (should be 0): {warning_count}")
         assert warning_count == 0, \
-            "unexpected too-large warning on a 5-node network"
+            "unexpected warning on a 5-node network"
 
         # No danger alert anywhere on the page.
         danger_count = await page.evaluate(
@@ -136,15 +131,29 @@ async def main():
         print(f"alert-danger count: {danger_count}")
         assert danger_count == 0, f"unexpected error alert(s) present: {danger_count}"
 
-        # Attractor table populated.
+        # core_info header line: whole network and its feedback core.
+        core_info = await page.evaluate(
+            "() => {"
+            "  const e = document.querySelector('#boolean-attractor_panel .boolean-core-info');"
+            "  return e ? e.textContent.trim() : null;"
+            "}"
+        )
+        print(f"core info: {core_info!r}")
+        assert (core_info is not None and "5 nodes" in core_info
+                and "5 in the feedback core" in core_info
+                and "basin sizes exact" in core_info), \
+            f"core_info line missing or wrong: {core_info}"
+
+        # Attractor table populated with several attractors (count rows on
+        # the table element itself).
         n_rows = await page.evaluate(
             "() => document.querySelectorAll("
             "  '#boolean-attractor_panel table tbody tr'"
             ").length"
         )
         print(f"attractor table rows: {n_rows}")
-        assert n_rows >= 1, \
-            f"expected >=1 attractor row in table, got {n_rows}"
+        assert n_rows >= 2, \
+            f"expected >=2 attractor rows in table, got {n_rows}"
 
         await page.screenshot(path="tests/screenshots/boolean_happy.png")
         print("\nboolean happy-path e2e assertions pass")

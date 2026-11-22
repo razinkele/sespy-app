@@ -6,6 +6,20 @@ From 1.0.0 this is the sespy-app changelog; earlier entries are SESPy's (the app
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-11-22
+
+Boolean attractors at scale. Requires the `sespy` library 1.19.0 (the pin moves from v1.18.0 to v1.19.0).
+
+### Changed
+- **Boolean attractors search the feedback core.** The search is exact for a feedback core of up to 20 elements, and it works for any network of up to 200 elements, instead of stopping at 12 elements for the whole network. A header line gives the network size, the core size and whether the basins are exact or estimated.
+- The search runs as a background task, with "Computing attractors…" while it runs. A Run made stale by a later Run is skipped before it starts.
+- **Sampled fallback.** When the core has more than 20 elements (the Caribbean template's has 64), the tab says so and runs the whole network from 2000 random start states (seed 0, at most 1000 steps each). It lists the attractors reached with their hits and basin fraction, plus a note with these settings and the number of unsettled trajectories. The settings are fixed. Networks above 200 elements get no Boolean search.
+- **All-off result.** When the only attractor is every element off (as for the sample project), the tab shows one sentence instead of a one-row table.
+- The attractor tables show at most 100 rows, those with the largest basins, with a notice when more were found.
+
+### Removed
+- The "Max nodes (cap on 2^N search)" slider. The limit is fixed and applies to the feedback core.
+
 ## [1.0.1] — 2026-11-21
 
 Deploy hardening for the split cutover; no user-visible change.

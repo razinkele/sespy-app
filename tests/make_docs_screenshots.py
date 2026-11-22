@@ -279,6 +279,12 @@ class Shooter:
             self.warn("boolean: eigenvalue plot did not render")
         await self.poll(lambda: self.page.evaluate(
             "() => document.querySelectorAll('#boolean-stability_summary dl dt').length >= 3"))
+        # Shoot the attractors tab (core_info line + result, MANUAL §17), not
+        # the Laplacian tab. The search runs in a background task.
+        await self.page.click("#boolean-boolean_tabs a[data-value='Boolean attractors']")
+        if not await self.poll_sel("#boolean-attractor_panel .boolean-core-info", n=60):
+            self.warn("boolean: attractor result did not render")
+        await self.page.wait_for_timeout(FADE_MS)
 
     async def gate_simulation(self) -> None:
         await self.page.check("#simulation-dominance_show")
