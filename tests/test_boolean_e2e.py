@@ -1,16 +1,17 @@
-"""E2E for the Boolean / Laplacian module.
+"""E2E for the Boolean / Laplacian module: the all-off path.
 
-Default sample SES has 17 nodes, which exceeds the Boolean attractor search
-cap (12). This test verifies the module handles that path gracefully:
+The default sample SES has 17 nodes and a 16-node feedback core, inside the
+exact limit of 20 core nodes, so the feedback-core search runs exactly (in a
+background task). Its only attractor is the all-off fixed point, so the panel
+shows the all-off sentence as an info alert instead of a one-row table:
   - Laplacian eigenvalue plot still renders.
   - Stability summary populates.
-  - Boolean tab shows the "Use Simplify Network" warning, not a crash.
-  - No error alert (alert-danger) appears anywhere — the cap is a *warning*
-    (alert-warning), not an error.
+  - Boolean tab shows the core_info line and the all-off info alert
+    (alert-info), with no table and no warning.
+  - No error alert (alert-danger) appears anywhere.
 
-The happy path (attractor table populates) is covered by 5 unit tests in
-tests/test_dynamics.py against small synthetic networks. This e2e covers the
-wire-up and the too-large code branch — the two things unit tests can't reach.
+The multi-attractor table is covered by tests/test_boolean_happy_e2e.py and
+the sampled fallback by tests/test_boolean_sampled_e2e.py.
 """
 import asyncio
 
@@ -91,22 +92,45 @@ async def main():
         # Scope to this module's navset, never a bare text= match: every panel
         # shares one DOM, so a future label elsewhere would hijack this click.
         await page.click("#boolean-boolean_tabs a[data-value='Boolean attractors']")
-        # Wait for the attractor panel's reactive content (the too_large
-        # warning alert) rather than racing a fixed sleep.
-        await page.wait_for_selector("#boolean-attractor_panel .alert-warning", timeout=15000)
+        # The search runs in a background task: wait for its result (the
+        # all-off info alert), not a fixed delay. Generous budget for a loaded
+        # machine; the search itself takes well under a second.
+        await page.wait_for_selector("#boolean-attractor_panel .alert-info", timeout=60000)
 
-        # On the default 17-node sample we expect the too_large warning,
-        # not a crash and not a danger error.
-        warning_text = await page.evaluate(
+        info_text = await page.evaluate(
             "() => {"
-            "  const w = document.querySelector('#boolean-attractor_panel .alert-warning');"
+            "  const w = document.querySelector('#boolean-attractor_panel .alert-info');"
             "  return w ? w.textContent.trim() : null;"
             "}"
         )
-        print(f"warning alert: {warning_text!r}")
-        assert warning_text is not None, "expected alert-warning in attractor panel"
-        assert "Network has" in warning_text and "Simplify Network" in warning_text, \
-            f"warning text doesn't match too_large pattern: {warning_text}"
+        print(f"info alert: {info_text!r}")
+        assert info_text is not None, "expected alert-info in attractor panel"
+        assert ("no feedback loop keeps any element active" in info_text
+                and "all elements off" in info_text), \
+            f"info text doesn't match the all-off sentence: {info_text}"
+
+        core_info = await page.evaluate(
+            "() => {"
+            "  const e = document.querySelector('#boolean-attractor_panel .boolean-core-info');"
+            "  return e ? e.textContent.trim() : null;"
+            "}"
+        )
+        print(f"core info: {core_info!r}")
+        assert (core_info is not None and "17 nodes" in core_info
+                and "16 in the feedback core" in core_info
+                and "basin sizes exact" in core_info), \
+            f"core_info line missing or wrong: {core_info}"
+
+        # all_off_only hides the single-row table; no cap/too-large warning.
+        n_tables = await page.evaluate(
+            "() => document.querySelectorAll('#boolean-attractor_panel table').length"
+        )
+        n_warn = await page.evaluate(
+            "() => document.querySelectorAll('#boolean-attractor_panel .alert-warning').length"
+        )
+        print(f"tables: {n_tables}, alert-warning: {n_warn}")
+        assert n_tables == 0, f"all-off result must not render a table, got {n_tables}"
+        assert n_warn == 0, f"unexpected warning in attractor panel: {n_warn}"
 
         # No danger-level error alert anywhere on the page
         danger_count = await page.evaluate(
