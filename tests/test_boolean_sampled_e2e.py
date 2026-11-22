@@ -10,7 +10,7 @@ back to the sampled whole-network search with the fixed arguments
   - the ``core_too_large`` warning names the core size and the limit;
   - the ``sampled_note`` paragraph is shown;
   - the sampled table has at least one attractor row;
-  - no danger alert anywhere.
+  - no danger alert in the attractor panel.
 
 Every selector is scoped to the module's namespaced ids (``#boolean-...``):
 all nav panels share one DOM, so a bare ``text=`` match could hit another
@@ -73,7 +73,7 @@ async def main():
         )
 
         danger_count = await page.evaluate(
-            "() => document.querySelectorAll('.alert-danger').length"
+            "() => document.querySelectorAll('#boolean-attractor_panel .alert-danger').length"
         )
         print(f"alert-danger count: {danger_count}")
         assert danger_count == 0, f"unexpected error alert(s) present: {danger_count}"
