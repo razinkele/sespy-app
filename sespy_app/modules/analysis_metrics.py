@@ -33,6 +33,8 @@ from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
 from sespy_app.event_bus import EventBus
 from sespy_app.i18n import Translator, t
+from sespy_app.modules._paths_view import path_rows, summary_lines
+from sespy_app.modules._paths_view import paths_csv as paths_csv_text
 
 METRIC_LABEL_KEYS: dict[str, str] = {
     "degree":      "metrics.degree",
@@ -510,32 +512,42 @@ def analysis_metrics_server(
                      style="margin-top: 0.5rem;"),
             )
         labels = {el.id: el.label for el in isa.elements}
-        header = ui.tags.tr(
-            ui.tags.th(""), ui.tags.th("length"), ui.tags.th("polarity"),
-        )
+        header = ui.tags.tr(*(
+            ui.tags.th(t(f"metrics.paths_col_{k}"))
+            for k in ("route", "score", "length", "polarity",
+                      "bottleneck", "delay", "confidence")
+        ))
         body = [
             ui.tags.tr(
-                ui.tags.td(" → ".join(labels.get(n, n) for n in row["path"])),
-                ui.tags.td(str(row["length"])),
-                ui.tags.td(ui.tags.strong(row["polarity"])),
+                ui.tags.td(row["route"]),
+                ui.tags.td(row["score"]),
+                ui.tags.td(row["links"]),
+                ui.tags.td(ui.tags.strong(row["sign"])),
+                ui.tags.td(row["weakest"]),
+                ui.tags.td(row["delays"]),
+                ui.tags.td(row["min_confidence"]),
             )
-            for row in r["paths"]
+            for row in path_rows(r, labels)
         ]
-        c = r["counts"]
-        trunc_line = None
-        if r["truncated"]:
-            trunc_line = ui.p(t("metrics.paths_truncated", max=len(r["paths"])),
-                              class_="text-muted", style="font-size: 0.85rem;")
+        lines = summary_lines(r, labels)
         return ui.div(
             ui.h5(t("metrics.paths")), controls,
-            ui.p(ui.tags.strong(
-                t("metrics.paths_summary", n=len(r["paths"]),
-                  pos=c["+"], neg=c["-"], amb=c["0"])),
-                style="margin-top: 0.5rem;"),
+            ui.p(ui.tags.strong(lines[0]), style="margin-top: 0.5rem;"),
+            *(ui.p(line, class_="mb-1") for line in lines[1:]),
+            ui.p(t("metrics.paths_score_note"), class_="text-muted",
+                 style="font-size: 0.85rem;"),
             ui.tags.table(ui.tags.thead(header), ui.tags.tbody(*body),
                           class_="table table-sm"),
-            trunc_line,
+            ui.download_button("paths_csv", t("metrics.paths_download"),
+                               class_="btn-sm btn-outline-secondary"),
         )
+
+    @render.download_button(filename="causal_paths.csv")
+    def paths_csv():
+        r = _paths_result.get()
+        isa = project_data.get().isa_data
+        labels = {el.id: el.label for el in isa.elements}
+        yield paths_csv_text(r or {"paths": [], "truncated": False}, labels)
 
     _hypermodules_result = reactive.value(None)
 
