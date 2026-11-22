@@ -22,6 +22,17 @@ CSV_HEADER = (
 _LEVELS = ("weak", "medium", "strong")
 
 
+_FORMULA_LEAD = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _csv_safe(s: str) -> str:
+    """Neutralise spreadsheet formula injection: element ids and labels come
+    from project files that may be imported from others, so a text cell that
+    starts with a formula character gets a leading single quote."""
+    s = str(s)
+    return "'" + s if s.startswith(_FORMULA_LEAD) else s
+
+
 def _label(labels: dict[str, str], node: str) -> str:
     return labels.get(node, node)
 
@@ -71,12 +82,13 @@ def paths_csv(result: dict, labels: dict[str, str]) -> str:
         conf = bn.get("confidence")
         w.writerow([
             rank,
-            " > ".join(row["path"]),
-            _route(row["path"], labels, " > "),
+            _csv_safe(" > ".join(row["path"])),
+            _csv_safe(_route(row["path"], labels, " > ")),
             row["polarity"],
             row["length"],
             repr(row["score"]),
-            bn["source"], bn["target"], bn["strength"],
+            _csv_safe(bn["source"]), _csv_safe(bn["target"]),
+            _csv_safe(bn["strength"]),
             "" if conf is None else conf,
             d["immediate"], d["short"], d["long"],
             row["min_confidence"],

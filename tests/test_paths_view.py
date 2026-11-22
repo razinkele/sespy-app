@@ -133,6 +133,20 @@ def test_paths_csv_matches_rows():
     assert all(r[-1] == "True" for r in body)
 
 
+def test_paths_csv_neutralises_formula_text_cells():
+    row = _row(["@cmd", "B"], "-", 0.55, ("@cmd", "B", "medium", 3), (1, 0, 0), 3)
+    labels = {"@cmd": '=HYPERLINK("x")', "B": "Beta"}
+    rec = list(csv.reader(io.StringIO(paths_csv(_result([row]), labels))))[1]
+    assert rec[1] == "'@cmd > B"                       # path_ids
+    assert rec[2] == "'=HYPERLINK(\"x\") > Beta"       # path_labels
+    assert rec[6] == "'@cmd"                           # bottleneck_source
+    assert rec[7] == "B" and rec[8] == "medium"        # safe text untouched
+    # numeric, polarity and truncated cells are unchanged
+    assert rec[0] == "1" and rec[3] == "-" and rec[4] == "1"
+    assert rec[5] == repr(0.55) and rec[9] == "3"
+    assert rec[10:] == ["1", "0", "0", "3", "False"]
+
+
 def test_paths_csv_empty_result_is_header_only():
     empty = _result([], red=(0, 0))
     assert paths_csv(empty, LABELS).splitlines() == [HEADER]
