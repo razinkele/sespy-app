@@ -179,9 +179,13 @@ def _core_view(core: dict[str, Any]) -> ui.Tag:
 
 def _sampled_view(core: dict[str, Any], sampled: dict[str, Any]) -> ui.Tag:
     n = sampled.get("n_nodes", core.get("n_nodes", 0))
-    header = ui.tags.p(
-        t("boolean.core_info", n=core.get("n_nodes", n), core=core.get("core_size", 0)),
-        class_="text-muted boolean-core-info")
+    # Spec §4.3: core_info plus basins_sampled, with the sampled result's own
+    # echoed n_samples (the effective value after the library's clamp).
+    basins = t("boolean.basins_sampled", samples=sampled.get("n_samples", 0))
+    core_info = t("boolean.core_info", n=core.get("n_nodes", n),
+                  core=core.get("core_size", 0))
+    header = ui.tags.p(f"{core_info} · {basins}",
+                       class_="text-muted boolean-core-info")
     too_big = ui.tags.div(
         t("boolean.core_too_large", core=core.get("core_size", 0),
           max=core.get("max_core", 0)),

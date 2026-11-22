@@ -6,7 +6,8 @@ loads the Caribbean MarineSABRES template (78 elements; a 64-node feedback
 core, above the exact limit of 20 core nodes), so the background task falls
 back to the sampled whole-network search with the fixed arguments
 (2000 random starts, seed 0). It checks:
-  - the ``core_info`` line names the whole network and its core;
+  - the ``core_info`` line names the whole network, its core and the
+    sampled basin estimate (2000 random starts);
   - the ``core_too_large`` warning names the core size and the limit;
   - the ``sampled_note`` paragraph is shown;
   - the sampled table has at least one attractor row;
@@ -47,7 +48,16 @@ async def main():
         # The h5s render before Shiny binds the buttons; an unbound click is lost.
         await page.wait_for_selector(f"{load_btn}.shiny-bound-input", timeout=15000)
         await page.click(load_btn)
-        await page.wait_for_timeout(2500)
+        # The load effect sets the project before it shows the "loaded
+        # (<name>)" notification, so that toast proves the template is in.
+        await page.wait_for_function(
+            "(name) => {"
+            "  const p = document.getElementById('shiny-notification-panel');"
+            "  return !!p && p.textContent.includes(name);"
+            "}",
+            arg=CARIBBEAN,
+            timeout=30000,
+        )
 
         # --- Step 2: run the analysis on the loaded 78-node SES.
         await page.click("#sespy_nav_boolean")
@@ -86,7 +96,8 @@ async def main():
         )
         print(f"core info: {core_info!r}")
         assert (core_info is not None and "78 nodes" in core_info
-                and "64 in the feedback core" in core_info), \
+                and "64 in the feedback core" in core_info
+                and "basin fractions estimated from 2000 random starts" in core_info), \
             f"core_info line missing or wrong: {core_info}"
 
         warning = await page.evaluate(

@@ -159,6 +159,29 @@ def test_sampled_renders_note_and_hits_column(monkeypatch):
     assert "Hits" in html and "Basin fraction (%)" in html
     assert "basin_size" not in html
     assert ALL_OFF not in html
+    # spec §4.3: the header line is core_info plus basins_sampled
+    assert ("17 nodes · 23 in the feedback core · basin fractions estimated "
+            "from 2000 random starts") in html, html
+
+
+def test_sampled_header_reads_samples_from_sampled_result(monkeypatch):
+    # The basins_sampled suffix uses the sampled result's echoed n_samples,
+    # not the app's requested value.
+    monkeypatch.setattr(dynamics, "boolean_attractors_core", _sentinel)
+
+    def fake_sampled(rules, n_samples=2000, *, max_steps=1000, seed=0):
+        return {"method": "sampled",
+                "attractors": [{"type": "fixed", "states": [0], "period": 1,
+                                "hits": 1234, "basin_fraction": 1.0}],
+                "n_samples": 1234, "n_unconverged": 0, "seed": seed,
+                "max_steps": max_steps, "n_nodes": len(rules)}
+
+    monkeypatch.setattr(dynamics, "boolean_attractors_sampled", fake_sampled)
+    with test_server(_server_for(_sample()), timeout_secs=90) as ts:
+        scope = _run(ts)
+        html = _panel(scope)
+    assert ("23 in the feedback core · basin fractions estimated from 1234 "
+            "random starts") in html, html
 
 
 def _fake_core(n_att, total, basin_method="exact"):
