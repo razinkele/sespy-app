@@ -321,6 +321,40 @@ def test_stale_generation_is_dropped(monkeypatch):
     assert "17 nodes · 16 in the feedback core" in final, final
 
 
+def test_queued_stale_runs_skip_the_search(monkeypatch):
+    # ExtendedTask queues invocations made while one runs, and runs them in
+    # order. Three Run clicks behind a gate: the first search is already
+    # running; of the two queued, only the latest may search. The middle one
+    # is stale before it starts and must return without running the core search.
+    release = threading.Event()
+    calls: list[int] = []
+    real = dynamics.boolean_attractors_core
+
+    def gated(rules, **kw):
+        calls.append(len(rules))
+        release.wait(timeout=10)
+        return real(rules, **kw)
+
+    monkeypatch.setattr(dynamics, "boolean_attractors_core", gated)
+    with test_server(_server_for(_sample()), timeout_secs=90) as ts:
+        scope = ts.make_scope("boolean")
+        scope.set_inputs(direction="cols", run_boolean=0)
+        scope.set_inputs(run_boolean=1)
+        scope.set_inputs(run_boolean=2)
+        scope.set_inputs(run_boolean=3)
+        assert COMPUTING in _panel(scope)
+        release.set()
+        _settle(ts, scope, _not_computing)
+        # let any (wrongly) queued extra search run before counting
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            ts.flush()
+            time.sleep(0.05)
+        html = _panel(scope)
+    assert len(calls) == 2, calls             # the first click and the last
+    assert ALL_OFF in html, html
+
+
 def test_no_data_after_run_is_not_overwritten(monkeypatch):
     release = threading.Event()
     real = dynamics.boolean_attractors_core

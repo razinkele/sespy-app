@@ -26,7 +26,6 @@ import numpy as np
 from sespy import dynamics
 from sespy.data_structure import Project
 from shiny import Inputs, Outputs, Session, module, reactive, render, ui
-from shiny.types import SilentException
 
 from sespy_app.event_bus import EventBus
 from sespy_app.i18n import Translator, t
@@ -229,6 +228,14 @@ def analysis_boolean_server(
     async def _att_task(rules, gen):
         # Exceptions travel with their generation, so a stale failure is
         # dropped exactly like a stale success.
+        # Invocations made while a search runs are queued and run serially.
+        # One made stale by a later Run must not start a thread at all:
+        # repeated clicks would otherwise queue full searches on the shared
+        # worker. (cancel() is no fix: it stops the asyncio task, not the
+        # to_thread worker.) _gen is a plain list cell, so reading it here is
+        # allowed; the observer drops the (gen, None) by its own gen check.
+        if gen != _gen[0]:
+            return (gen, None)
         try:
             result = await asyncio.to_thread(_search, rules)
         except Exception as exc:                # noqa: BLE001 — reported by _att_observe
@@ -262,14 +269,13 @@ def analysis_boolean_server(
 
     @reactive.effect
     def _att_observe() -> None:
-        try:
-            gen, result = _att_task.result()
-        except SilentException:
-            raise
-        except Exception as exc:                # noqa: BLE001 — real task error: show, don't crash
-            logging.getLogger(__name__).exception("boolean attractor task failed")
-            att_state.set({"error": str(exc)})
-            return
+        # No `except Exception` branch here: _att_task catches every Exception
+        # around the search and returns it with its generation (the code
+        # outside that try is a comparison and a tuple return), so a raised
+        # task error is unreachable, and a branch without a gen check could
+        # only show a stale error. SilentException (not yet run / running)
+        # propagates as usual.
+        gen, result = _att_task.result()
         if gen != _gen[0]:
             return
         if isinstance(result, BaseException):
