@@ -1,12 +1,12 @@
 [project]
 name = "sespy-app"
-version = "1.1.0"
+version = "1.2.0"
 description = "Research-oriented Shiny for Python UI for the SESPy library (Horizon Europe Marine-SABRES)"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
-    "sespy[pdf,bayes] @ git+https://github.com/razinkele/SESPy@v1.19.0",
+    "sespy[pdf,bayes] @ git+https://github.com/razinkele/SESPy@v1.20.0",
     "shiny>=1.7",
     "htmltools>=0.5",
     # The pyvis fork (v4.x, with `pyvis.shiny` for the CLD/graph view), on PyPI

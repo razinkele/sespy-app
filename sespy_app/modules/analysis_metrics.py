@@ -17,6 +17,10 @@ without re-entrancy bugs, the architecture scales.
 
 from __future__ import annotations
 
+import asyncio
+import logging
+from typing import Any
+
 from pyvis.network import Network
 from pyvis.shiny import output_pyvis_network, render_pyvis_network
 from sespy import network as net_analysis
@@ -33,6 +37,14 @@ from shiny import Inputs, Outputs, Session, module, reactive, render, ui
 
 from sespy_app.event_bus import EventBus
 from sespy_app.i18n import Translator, t
+from sespy_app.modules._paths_view import (
+    fragile_text,
+    path_rows,
+    sensitivity_partial_notice,
+    sensitivity_rows,
+    summary_lines,
+)
+from sespy_app.modules._paths_view import paths_csv as paths_csv_text
 
 METRIC_LABEL_KEYS: dict[str, str] = {
     "degree":      "metrics.degree",
@@ -43,6 +55,22 @@ METRIC_LABEL_KEYS: dict[str, str] = {
     "eigenvector": "metrics.eigenvector",
     "pagerank":    "metrics.pagerank",
 }
+
+# Causal pathways robustness check: fixed arguments, not client-settable.
+_SENS_N_DRAWS = 500
+_SENS_SEED = 0
+_SENS_BASE = 0.5
+_SENS_FLIP_MODE = "confidence"
+
+_COMPUTING = object()
+
+
+def _path_sensitivity(isa: IsaData, source: str, target: str) -> dict:
+    """Worker-thread body: plain Python, no reactives, no `t()`. Looks the
+    library function up at call time so tests can patch it."""
+    return net_analysis.path_sensitivity(
+        isa, source, target, n_draws=_SENS_N_DRAWS, seed=_SENS_SEED,
+        base=_SENS_BASE, flip_mode=_SENS_FLIP_MODE)
 
 
 def _scaled_size(value: float, lo: float, hi: float, *, smin: int = 18, smax: int = 60) -> int:
@@ -452,19 +480,124 @@ def analysis_metrics_server(
         )
 
     _paths_result = reactive.value(None)
+    # The (source, target) the current _paths_result was traced for; the
+    # robustness run always uses it, never the current selects.
+    _paths_pair: reactive.Value[tuple[str, str] | None] = reactive.value(None)
+    # Robustness run: None | _COMPUTING | path_sensitivity result | {"error"}.
+    _sens_state: reactive.Value[Any] = reactive.value(None)
+    _sens_gen = [0]                     # plain cell — NOT reactive (avoids self-loop)
+
+    def _clear_sens() -> None:
+        # Any in-flight or queued run becomes stale; its result is dropped.
+        _sens_gen[0] += 1
+        _sens_state.set(None)
 
     @reactive.effect
     def _reset_paths():
-        # A model change invalidates a previously traced result.
+        # A model change invalidates a previously traced result and its
+        # robustness check.
         event_bus.isa_change.get()
+        _clear_sens()
         _paths_result.set(None)
+        _paths_pair.set(None)
 
     @reactive.effect
     @reactive.event(input.trace_paths, ignore_init=True)
     def _compute_paths():
+        _clear_sens()
+        source, target = input.paths_source(), input.paths_target()
         _paths_result.set(net_analysis.causal_paths(
-            project_data.get().isa_data,
-            input.paths_source(), input.paths_target()))
+            project_data.get().isa_data, source, target))
+        _paths_pair.set((source, target))
+
+    @reactive.extended_task
+    async def _sens_task(isa, source, target, gen):
+        # Same contract as analysis_boolean's attractor search. Invocations
+        # made while a run is in progress are queued and run serially; one
+        # made stale by a later click, trace or model change must not start
+        # a thread at all (cancel() stops the asyncio task, not the to_thread
+        # worker). _sens_gen is a plain list cell, so reading it here is
+        # allowed; the observer drops (gen, None) by its own gen check.
+        # Exceptions travel with their generation.
+        if gen != _sens_gen[0]:
+            return (gen, None)
+        try:
+            result = await asyncio.to_thread(_path_sensitivity, isa, source, target)
+        except Exception as exc:        # noqa: BLE001 — reported by _sens_observe
+            return (gen, exc)
+        return (gen, result)
+
+    @reactive.effect
+    @reactive.event(input.paths_sens_run, ignore_init=True)
+    def _run_sens():
+        # First, before any early return: a click makes every earlier run stale.
+        _sens_gen[0] += 1
+        gen = _sens_gen[0]
+        pair = _paths_pair.get()
+        r = _paths_result.get()
+        if pair is None or not r or not r["paths"]:
+            _sens_state.set(None)
+            return
+        _sens_state.set(_COMPUTING)
+        _sens_task(project_data.get().isa_data, pair[0], pair[1], gen)
+
+    @reactive.effect
+    def _sens_observe():
+        # _sens_task returns every Exception with its generation, so there is
+        # no except branch here (it could only show a stale error).
+        # SilentException (not yet run / running) propagates as usual.
+        gen, result = _sens_task.result()
+        if gen != _sens_gen[0]:
+            return
+        if isinstance(result, BaseException):
+            logging.getLogger(__name__).error(
+                "path robustness check failed", exc_info=result)
+            _sens_state.set({"error": str(result) or type(result).__name__})
+            return
+        _sens_state.set(result)
+
+    @output
+    @render.ui
+    def paths_sensitivity():
+        s = _sens_state.get()
+        if s is None:
+            return None
+        if s is _COMPUTING:
+            return ui.p(t("metrics.paths_sens_computing", n=_SENS_N_DRAWS),
+                        class_="text-muted", style="margin-top: 0.5rem;")
+        if "error" in s:
+            return ui.div(t("metrics.paths_sens_error", error=s["error"]),
+                          class_="alert alert-danger",
+                          style="margin-top: 0.5rem;")
+        with reactive.isolate():
+            labels = {el.id: el.label
+                      for el in project_data.get().isa_data.elements}
+        header = ui.tags.tr(
+            ui.tags.th(t("metrics.paths_col_route")),
+            ui.tags.th(t("metrics.paths_sens_col_rank")),
+            ui.tags.th(t("metrics.paths_sens_col_polarity")),
+            ui.tags.th(t("metrics.paths_sens_col_survival")),
+        )
+        body = [
+            ui.tags.tr(
+                ui.tags.td(row["route"]),
+                ui.tags.td(row["rank"]),
+                ui.tags.td(row["polarity"]),
+                ui.tags.td(row["survival"]),
+            )
+            for row in sensitivity_rows(s, labels)
+        ]
+        partial = sensitivity_partial_notice(s)
+        return ui.div(
+            ui.p(t("metrics.paths_sens_caption", n=s["n_draws"], seed=s["seed"]),
+                 class_="text-muted",
+                 style="font-size: 0.85rem; margin-top: 0.5rem;"),
+            (None if partial is None else
+             ui.p(partial, class_="text-muted", style="font-size: 0.85rem;")),
+            ui.tags.table(ui.tags.thead(header), ui.tags.tbody(*body),
+                          class_="table table-sm"),
+            ui.p(fragile_text(s, labels), class_="mb-1"),
+        )
 
     @output
     @render.ui
@@ -510,32 +643,45 @@ def analysis_metrics_server(
                      style="margin-top: 0.5rem;"),
             )
         labels = {el.id: el.label for el in isa.elements}
-        header = ui.tags.tr(
-            ui.tags.th(""), ui.tags.th("length"), ui.tags.th("polarity"),
-        )
+        header = ui.tags.tr(*(
+            ui.tags.th(t(f"metrics.paths_col_{k}"))
+            for k in ("route", "score", "length", "polarity",
+                      "bottleneck", "delay", "confidence")
+        ))
         body = [
             ui.tags.tr(
-                ui.tags.td(" → ".join(labels.get(n, n) for n in row["path"])),
-                ui.tags.td(str(row["length"])),
-                ui.tags.td(ui.tags.strong(row["polarity"])),
+                ui.tags.td(row["route"]),
+                ui.tags.td(row["score"]),
+                ui.tags.td(row["links"]),
+                ui.tags.td(ui.tags.strong(row["sign"])),
+                ui.tags.td(row["weakest"]),
+                ui.tags.td(row["delays"]),
+                ui.tags.td(row["min_confidence"]),
             )
-            for row in r["paths"]
+            for row in path_rows(r, labels)
         ]
-        c = r["counts"]
-        trunc_line = None
-        if r["truncated"]:
-            trunc_line = ui.p(t("metrics.paths_truncated", max=len(r["paths"])),
-                              class_="text-muted", style="font-size: 0.85rem;")
+        lines = summary_lines(r, labels)
         return ui.div(
             ui.h5(t("metrics.paths")), controls,
-            ui.p(ui.tags.strong(
-                t("metrics.paths_summary", n=len(r["paths"]),
-                  pos=c["+"], neg=c["-"], amb=c["0"])),
-                style="margin-top: 0.5rem;"),
+            ui.p(ui.tags.strong(lines[0]), style="margin-top: 0.5rem;"),
+            *(ui.p(line, class_="mb-1") for line in lines[1:]),
+            ui.p(t("metrics.paths_score_note"), class_="text-muted",
+                 style="font-size: 0.85rem;"),
             ui.tags.table(ui.tags.thead(header), ui.tags.tbody(*body),
                           class_="table table-sm"),
-            trunc_line,
+            ui.download_button("paths_csv", t("metrics.paths_download"),
+                               class_="btn-sm btn-outline-secondary"),
+            ui.input_action_button("paths_sens_run", t("metrics.paths_sens_run"),
+                                   class_="btn-sm btn-outline-primary ms-2"),
+            ui.output_ui("paths_sensitivity"),
         )
+
+    @render.download_button(filename="causal_paths.csv")
+    def paths_csv():
+        r = _paths_result.get()
+        isa = project_data.get().isa_data
+        labels = {el.id: el.label for el in isa.elements}
+        yield paths_csv_text(r or {"paths": [], "truncated": False}, labels)
 
     _hypermodules_result = reactive.value(None)
 

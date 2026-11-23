@@ -6,6 +6,17 @@ From 1.0.0 this is the sespy-app changelog; earlier entries are SESPy's (the app
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-11-23
+
+Causal path diagnostics. Requires the `sespy` library 1.20.0 (the pin moves from v1.19.0 to v1.20.0).
+
+### Added
+- **Causal pathways are scored.** Each path gets a "Score": the STRENGTH_LINK weights of its links multiplied, times e^(−0.2·(links−1)). It ranks structural routes; it is not an effect size. The table lists the paths strongest first with "Score", "Links", "Sign", "Weakest link", "Delays" and "Min. confidence".
+- **Route summary.** Lines above the table name the strongest positive and the strongest negative route, say when both signs connect the pair (contradiction), and count the disjoint routes among the paths listed (redundancy).
+- **Partial-ranking notice.** When the path search stops at its limit, a notice says the ranking covers only the paths found, so "strongest" is not definitive. The robustness results carry the same notice.
+- **"Download paths (CSV)"** saves the full path list. Text cells that start with a formula character (`=`, `+`, `-`, `@`, tab, carriage return) get a leading single quote, so a spreadsheet does not run them as formulas.
+- **"Test robustness"** runs in the background: 500 perturbed versions of the network (seed 0). For each path it adds how often it is the top route of its sign, keeps its sign and survives (as %), plus the fragile links whose uncertainty most often changes the top route. A result made stale by a changed pair or model is dropped, and repeated clicks do not queue full runs.
+
 ## [1.1.0] — 2026-11-22
 
 Boolean attractors at scale. Requires the `sespy` library 1.19.0 (the pin moves from v1.18.0 to v1.19.0).
