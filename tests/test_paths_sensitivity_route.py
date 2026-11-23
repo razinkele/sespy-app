@@ -191,6 +191,7 @@ def test_run_button_only_with_paths(monkeypatch):
         assert 'id="metrics-paths_sens_run"' in summary
         assert "Test robustness" in summary
         assert 'id="metrics-paths_sensitivity"' in summary
+        assert "not an effect size" in summary            # metrics.paths_score_note
 
 
 def test_sensitivity_shows_computing_then_table(monkeypatch):

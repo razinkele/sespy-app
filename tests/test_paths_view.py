@@ -145,6 +145,13 @@ def test_paths_csv_neutralises_formula_text_cells():
     assert rec[0] == "1" and rec[3] == "-" and rec[4] == "1"
     assert rec[5] == repr(0.55) and rec[9] == "3"
     assert rec[10:] == ["1", "0", "0", "3", "False"]
+    # The stored raw confidence is not validated on load: a text value is
+    # neutralised, a number (even a negative one) stays raw.
+    inj = '=HYPERLINK("http://x","c")'
+    for conf, want in ((inj, "'" + inj), ("+1", "'+1"), (-1, "-1"), (4, "4")):
+        r = _row(["A", "B"], "+", 0.55, ("A", "B", "medium", conf), (1, 0, 0), 1)
+        rec = list(csv.reader(io.StringIO(paths_csv(_result([r]), LABELS))))[1]
+        assert rec[9] == want, conf
 
 
 def test_paths_csv_empty_result_is_header_only():

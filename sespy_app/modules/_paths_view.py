@@ -89,7 +89,9 @@ def paths_csv(result: dict, labels: dict[str, str]) -> str:
             repr(row["score"]),
             _csv_safe(bn["source"]), _csv_safe(bn["target"]),
             _csv_safe(bn["strength"]),
-            "" if conf is None else conf,
+            # stored raw value, unvalidated on load: text is neutralised,
+            # numbers stay raw (a numeric -1 must not get a quote)
+            "" if conf is None else (_csv_safe(conf) if isinstance(conf, str) else conf),
             d["immediate"], d["short"], d["long"],
             row["min_confidence"],
             truncated,
